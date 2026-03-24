@@ -28,7 +28,7 @@ Comments/Bugs/Problems: amy.tabb@usda.gov, or open an issue on Github.
 # Underlying ideas; how and when to cite this work
 
 This README file is produced by Amy Tabb as a companion to a paper:
-	Multi-camera calibration with pattern rigs, including for non-overlapping cameras: CALICO
+	[Multi-camera calibration with pattern rigs, including for non-overlapping cameras: CALICO](https://arxiv.org/abs/1903.06811)
 
 
 ````latex
