@@ -49,6 +49,7 @@ void ReadDirectory(string dir_name, vector<string>& content_names){
 	// Enter path to directory existing below
 
 	DIR * dir = opendir (dir_name.c_str());
+	if (!dir) return;
 	string s;
 	dp = readdir(dir);
 	while ( dp != NULL) {

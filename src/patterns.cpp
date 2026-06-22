@@ -8,6 +8,7 @@
 #include "patterns.hpp"
 #include "helper-cali.hpp"
 #include "helper.hpp"
+#include "pattern-parameters.hpp"
 
 // used 11/27
 Scalar PatternsCreated::Color(int index){
@@ -30,7 +31,7 @@ void PatternsCreated::ConstructAprilTagVersion(const string& read_dir, const str
     int count = 0;
 
     // read from yaml., no generate.
-    string spec_file_path = read_dir + "network_specification_file.yaml";
+    string spec_file_path = read_dir + "/network_specification_file.yaml";
     bool valid = readAprilTagSpecificationFile(spec_file_path, pp);
 
     if (pp.numberBoards > 1){
@@ -309,7 +310,6 @@ void PatternsCreated::ConstructCharucoVersionNoRotate(const string& read_dir, co
     // read from yaml., no generate.
     string spec_file_path = read_dir + "network_specification_file.yaml";
     bool valid = readCharucoSpecificationFile(spec_file_path, pp);
-
     string filename_write = write_dir + "network_specification_file.yaml";
 
     CopyFile(spec_file_path, filename_write);
@@ -502,6 +502,8 @@ PatternsCreated::PatternsCreated(const string& read_dir,
     cout << "Is charuco?"  << is_charuco << endl;
     cout << "Is april?"  << is_april << endl;
 
+    string spec_file_path = read_dir + "network_specification_file.yaml";
+
     if (is_april){
         ConstructAprilTagVersion(read_dir, write_dir, src_file, generate_only);
     }   else {
@@ -514,6 +516,11 @@ PatternsCreated::PatternsCreated(const string& read_dir,
             exit(1);
 
         }
+    }
+
+    if (!ValidatePatternParams(pp, spec_file_path)) {
+        cout << "Pattern specification validation failed. Check errors above." << endl;
+        exit(1);
     }
 
     // GET 8 COLORS

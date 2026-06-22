@@ -1,10 +1,3 @@
-/*
- * pattern-parameters.hpp
- *
- *  Created on: Sep 1, 2020
- *      Author: atabb
- */
-
 #ifndef PATTERN_PARAMETERS_HPP_
 #define PATTERN_PARAMETERS_HPP_
 
@@ -55,5 +48,9 @@ public:
 bool readCharucoSpecificationFile(string filename, patternParameters &params);
 
 bool readAprilTagSpecificationFile(string filename, patternParameters &params);
+
+int GetArucoDictionarySize(int arc_code);
+
+bool ValidatePatternParams(const patternParameters& pp, const string& spec_file);
 
 #endif /* PATTERN_PARAMETERS_HPP_ */

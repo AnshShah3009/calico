@@ -96,7 +96,7 @@ target_compile_features(${CALICO_EXE} PRIVATE cxx_std_17)
 
 target_compile_options(${CALICO_EXE} PRIVATE ${my_USUAL_FLAGS})
 
-target_link_libraries(${CALICO_EXE} ${CERES_LIBRARIES} Eigen3::Eigen gomp ${OpenCV_LIBS} ${apriltags_LIBRARIES} ${apriltag_LIBRARIES})
+target_link_libraries(${CALICO_EXE} ${CERES_LIBRARIES} Eigen3::Eigen gomp ${OpenCV_LIBS} ${apriltags_LIBRARIES} ${apriltag_LIBRARIES} glog gflags)
 
 ################ installs #############################
 

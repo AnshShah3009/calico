@@ -1,10 +1,3 @@
-/*
- * multicamera.hpp
- *
- *  Created on: Jul 6, 2018
- *      Author: atabb
- */
-
 #ifndef MULTICAMERA_HPP_
 #define MULTICAMERA_HPP_
 
@@ -181,11 +174,24 @@ public:
 
     void WriteSimulatedCamerasAtAllTimes(const string& write_directory,  const string& current_dir,
             const vector<CameraCali*>& CCV,
-            float camera_size, float track_size, const vector<Matrix4d>& vector_to_use, int r, int g, int b);
+            float camera_size, float track_size, const vector<Matrix4d>& vector_to_use,
+            const vector<int>& cam_color = vector<int>());
+
+    void WriteSimulatedCamerasAtAllTimes(const string& write_directory,  const string& current_dir,
+            const vector<CameraCali*>& CCV,
+            float camera_size, float track_size, const vector<Matrix4d>& vector_to_use,
+            const vector<vector<int> >& camera_colors);
 
     void WriteSolutionAssessErrorII(const string& write_directory, const vector<string>& camera_names,
             const vector<CameraCali*>& CCV, int type,
-            bool write, float camera_size, float track_size );
+            bool write, float camera_size, float track_size,
+            const vector<vector<int> >& camera_colors = vector<vector<int> >(),
+            const vector<vector<int> >& pattern_colors = vector<vector<int> >(),
+            bool show_progress = false);
+
+    void WriteCheckpoint(const string& write_dir, int stage, int variable_index);
+
+    bool LoadCheckpoint(const string& write_dir, int& stage, int& variable_index);
 
 private:
     int p_s;

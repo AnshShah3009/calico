@@ -98,8 +98,6 @@ string FindValueOfFieldInFile(const string& filename, const string& fieldTag, bo
     }
 
 
-    cout << "Found! " << found << " field " << fieldTag << " and result " << return_str << endl;
-
     if (kill_if_not_found && !found){
         cout << "Not found, and kill if not found activated. Killing ... " << endl;
         exit(1);
@@ -115,7 +113,6 @@ void EnsureDirHasTrailingBackslash(string& write_directory){
 
     int n_letters = write_directory.size();
     bool eval =  (write_directory[n_letters - 1] == '/');
-    cout << "Last character compare " << write_directory << " " <<  eval << endl;
     if (eval == false){
         write_directory = write_directory + "/";
     }

@@ -1563,7 +1563,8 @@ void MCcali::WriteCameraCalibrationResult(const vector<CameraCali*>& CCV, const 
 // used 11/27
 void MCcali::WriteSimulatedCamerasAtAllTimes(const string& write_directory, const string& current_dir,
         const vector<CameraCali*>& CCV,
-        float camera_size, float track_size, const vector<Matrix4d>& vector_to_use, int r, int g, int b){
+        float camera_size, float track_size, const vector<Matrix4d>& vector_to_use,
+        const vector<int>& cam_color){
 
 
     Matrix4d ProposedMat;
@@ -1577,6 +1578,13 @@ void MCcali::WriteSimulatedCamerasAtAllTimes(const string& write_directory, cons
     string filename;
 
     Vector3d offset;  offset.setZero();  offset(1) = -1;
+
+    int r = 255, g = 255, b = 255;
+    if (!cam_color.empty() && cam_color.size() >= 3){
+        r = cam_color[0];
+        g = cam_color[1];
+        b = cam_color[2];
+    }
 
     for (int i = 0; i < NumberCameras(); i++){
         Matrix4d Cam;
@@ -1621,10 +1629,75 @@ void MCcali::WriteSimulatedCamerasAtAllTimes(const string& write_directory, cons
             CCV[0]->rows, CCV[0]->cols, filename, camera_size);
 
 }
+
+void MCcali::WriteSimulatedCamerasAtAllTimes(const string& write_directory, const string& current_dir,
+        const vector<CameraCali*>& CCV,
+        float camera_size, float track_size, const vector<Matrix4d>& vector_to_use,
+        const vector<vector<int> >& camera_colors){
+
+
+    Matrix4d ProposedMat;
+    Matrix4d TimeMat;
+
+    vector<Matrix3d> internals;
+    vector<Matrix4d> externals;
+
+    Vector3d center;
+
+    string filename;
+
+    Vector3d offset;  offset.setZero();  offset(1) = -1;
+
+    for (int i = 0; i < NumberCameras(); i++){
+        Matrix4d Cam;
+        vector<Vector3d> one_track;
+        if (V_has_initialization[i]){
+            Cam = vector_to_use[i];
+            for (int t = 0; t < tn; t++){
+
+                if (V_has_initialization[cn + pn + t] == true){
+
+                    TimeMat = vector_to_use[cn + pn + t];
+
+                    ProposedMat = Cam*TimeMat.inverse();
+
+                    internals.push_back(CCV[i]->internal_parameters);
+                    externals.push_back(ProposedMat);
+
+                    filename  =  write_directory + current_dir + "/c"+
+                            ToString<int>(i) + "_time" + ToString<int>(t) + ".ply";
+
+                    const vector<int>& col = camera_colors[i % camera_colors.size()];
+                    create_camera(CCV[i]->internal_parameters, ProposedMat, camera_size, col[0], col[1], col[2],
+                            CCV[i]->rows, CCV[i]->cols, filename);
+
+                    center = ReturnCenter(ProposedMat);
+
+                    one_track.push_back(center);
+                }
+            }
+
+            filename  =  write_directory + current_dir + "/track"+
+                    ToString<int>(i) + ".ply";
+
+            create_tracks(one_track, 0, 0, 0, track_size, offset, filename);
+        }
+    }
+
+
+    filename  =  write_directory + current_dir + "/all.ply";
+
+    create_cameras(internals, externals, camera_colors,
+            CCV[0]->rows, CCV[0]->cols, filename, camera_size);
+
+}
 // used 11/27
 void MCcali::WriteSolutionAssessErrorII(const string& write_directory, const vector<string>& camera_names,
         const vector<CameraCali*>& CCV, int type,
-        bool write, float camera_size, float track_size ){
+        bool write, float camera_size, float track_size,
+        const vector<vector<int> >& camera_colors,
+        const vector<vector<int> >& pattern_colors,
+        bool show_progress ){
     // last two are empty if the dataset is not simulated.
 
     type_recorder.push_back(type);
@@ -1693,35 +1766,12 @@ void MCcali::WriteSolutionAssessErrorII(const string& write_directory, const vec
     vector<Matrix3d> internals;
     vector<Matrix4d> externals;
 
-    vector<int> camColor(3, 0);
-
-    switch (type){
-    case -2: {
-        //cam_color << 230, 159, 0;
-        camColor[0] = 230;
-        camColor[1] = 159; // [2]  = 0
-    } break;
-    case -1:{
-        //cam_color << 230, 159, 0;
-        camColor[0] = 230;
-        camColor[1] = 159;
-    }break;
-    case 0:{
-        //cam_color << 0, 114, 178;
-        camColor[1] = 114;
-        camColor[2] = 178;
-    } break;
-    case 1:{
-
-        camColor[1] = 158;
-        camColor[2] = 115;
-    } break;
-    case 2:{
-        // cam_color << 0, 158, 0;
-        camColor[1] = 158;
-        camColor[1] = 158;
-        camColor[2] = 115;
-    } break;
+    // Generate per-camera distinct colors if not provided
+    vector<vector<int> > camColors;
+    if (camera_colors.size() >= (size_t)NumberCameras()) {
+        camColors = camera_colors;
+    } else {
+        camColors = GenerateCameraColors(NumberCameras());
     }
 
     for (int i = 0; i < NumberCameras(); i++){
@@ -1731,8 +1781,8 @@ void MCcali::WriteSolutionAssessErrorII(const string& write_directory, const vec
         switch (type){
         default: {
             if (V_has_initialization[i]){
-                // rows and cols are empty
-                create_camera(CCV[i]->internal_parameters, vector_to_use[i], camera_size,  camColor[0], camColor[1], camColor[2], CCV[i]->rows, CCV[i]->cols, filename);
+                const vector<int>& col = camColors[i % camColors.size()];
+                create_camera(CCV[i]->internal_parameters, vector_to_use[i], camera_size, col[0], col[1], col[2], CCV[i]->rows, CCV[i]->cols, filename);
                 internals.push_back(CCV[i]->internal_parameters);
                 externals.push_back(vector_to_use[i]);
             }
@@ -1745,7 +1795,7 @@ void MCcali::WriteSolutionAssessErrorII(const string& write_directory, const vec
 
     // not sure this gets called.
     if (internals.size() > 0){
-        create_cameras(internals, externals, camColor[0], camColor[1], camColor[2], CCV[0]->rows, CCV[0]->cols, filename, camera_size);
+        create_cameras(internals, externals, camColors, CCV[0]->rows, CCV[0]->cols, filename, camera_size);
     }
 
     string write_file = write_directory + current_dir +  "/variables.txt";
@@ -1891,7 +1941,7 @@ void MCcali::WriteSolutionAssessErrorII(const string& write_directory, const vec
     reprojection_error_by_term_and_type.push_back(reprojection_error);
 
 
-    WriteSimulatedCamerasAtAllTimes(write_directory, current_dir, CCV, camera_size, track_size, vector_to_use, camColor[0], camColor[1], camColor[2]);
+    WriteSimulatedCamerasAtAllTimes(write_directory, current_dir, CCV, camera_size, track_size, vector_to_use, camColors);
 
 
 }
@@ -2196,5 +2246,82 @@ double StdDeviation(vector<double>& v, double m)
         E+=(v[i] - m)*(v[i] - m);
     }
     return sqrt(E/n);
+}
+
+void MCcali::WriteCheckpoint(const string& write_dir, int stage, int variable_index) {
+    string cp_file = write_dir + "checkpoint_stage" + ToString(stage) + ".txt";
+    ofstream cp(cp_file.c_str());
+
+    cp << "stage " << stage << endl;
+    cp << "variable_index " << variable_index << endl;
+    cp << "num_vars " << vn << endl;
+
+    for (int i = 0; i < vn; i++) {
+        cp << V_has_initialization[i] << " ";
+    }
+    cp << endl;
+
+    for (int i = 0; i < vn; i++) {
+        for (int r = 0; r < 4; r++) {
+            for (int c = 0; c < 4; c++) {
+                cp << V_initial[i](r, c) << " ";
+            }
+        }
+        cp << endl;
+    }
+
+    cp.close();
+    cout << "Checkpoint saved: " << cp_file << " (var " << variable_index << ")" << endl;
+}
+
+bool MCcali::LoadCheckpoint(const string& write_dir, int& stage, int& variable_index) {
+    string cp_file = write_dir + "checkpoint.txt";
+    ifstream cp(cp_file.c_str());
+
+    if (!cp.good()) {
+        // Try variant naming
+        cp_file = write_dir + "checkpoint_stage4.txt";
+        cp.open(cp_file.c_str());
+    }
+
+    if (!cp.good()) {
+        cout << "No checkpoint found in " << write_dir << endl;
+        return false;
+    }
+
+    string label;
+    int saved_vn;
+
+    cp >> label >> stage;
+    cp >> label >> variable_index;
+    cp >> label >> saved_vn;
+
+    if (saved_vn != vn) {
+        cout << "Checkpoint variable count mismatch: expected " << vn
+             << ", got " << saved_vn << ". Ignoring." << endl;
+        return false;
+    }
+
+    for (int i = 0; i < vn; i++) {
+        bool val;
+        cp >> val;
+        V_has_initialization[i] = val;
+        V_in_foundational_relationships[i] = true;
+    }
+
+    for (int i = 0; i < vn; i++) {
+        Matrix4d M;
+        for (int r = 0; r < 4; r++) {
+            for (int c = 0; c < 4; c++) {
+                cp >> M(r, c);
+            }
+        }
+        V_initial[i] = M;
+    }
+
+    cp.close();
+    cout << "Checkpoint loaded: " << cp_file << " (stage " << stage
+         << ", var " << variable_index << ")" << endl;
+    return true;
 }
 

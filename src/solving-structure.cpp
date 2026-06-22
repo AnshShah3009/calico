@@ -914,6 +914,8 @@ int CeresProblemClass::AddToProblemAlgebraicError(MCcali& MC, vector<int>& solve
     return new_eqs.size();
 }
 
+extern int g_num_threads;
+
 // used 11/27
 void CeresProblemClass::SolveWriteBackToMCAlgebraicError(MCcali& MC, std::ofstream& out, int iterations, bool output_to_terminal){
 
@@ -926,10 +928,8 @@ void CeresProblemClass::SolveWriteBackToMCAlgebraicError(MCcali& MC, std::ofstre
     options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
 
     options.minimizer_progress_to_stdout = output_to_terminal;
-    options.num_threads = omp_get_max_threads();
+    options.num_threads = g_num_threads;
     options.max_num_iterations = iterations;
-
-    cout << "Number threads .... " << options.num_threads << endl;
 
     Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
@@ -975,7 +975,7 @@ void CeresProblemClass::SolveWriteBackToMCRP(MCcali& MC, std::ofstream& out, int
     options.linear_solver_type = ceres::DENSE_SCHUR;
 
     options.minimizer_progress_to_stdout = output_to_terminal;
-    options.num_threads = omp_get_max_threads();
+    options.num_threads = g_num_threads;
     options.max_num_iterations = iterations;
 
     Solver::Summary summary;
@@ -1109,7 +1109,7 @@ void XASolveIteratively(vector<Matrix4d>& As, Matrix4d& X, PARAM_TYPE param_type
     options.linear_solver_type = ceres::DENSE_QR;
 
     options.minimizer_progress_to_stdout = false;
-    options.num_threads = omp_get_max_threads();
+    options.num_threads = g_num_threads;
     options.max_num_iterations = max_iterations;
 
     Solver::Summary summary;
@@ -1175,7 +1175,7 @@ void AXZBSolveIteratively(vector<Matrix4d>& As, vector<Matrix4d>& Bs, Matrix4d& 
     options.linear_solver_type = ceres::DENSE_QR;
 
     options.minimizer_progress_to_stdout = true;
-    options.num_threads = omp_get_max_threads();
+    options.num_threads = g_num_threads;
     options.max_num_iterations = max_iterations;
 
     Solver::Summary summary;

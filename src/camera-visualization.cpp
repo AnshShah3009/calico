@@ -1,14 +1,6 @@
-/*
- *
- *
- *  Created on: Jul 9, 2009
- *      Author: atabb
- */
-
 #include "camera-visualization.hpp"
 #include "helper.hpp"
 
-// used 11/24
 void camera(const Matrix3d& Kinv, float max_u, float max_v, float mag, vector< Vector3d >& vertex_coordinates ) {
 
     Vector3d a;
@@ -37,7 +29,6 @@ void camera(const Matrix3d& Kinv, float max_u, float max_v, float mag, vector< V
 
 }
 
-//used 11/24
 int create_camera(vector< Vector3d >& vertex_coordinates, vector< vector<int> >& face_indices,
         const Matrix3d& internal, const Matrix4d& external, const Vector3d& C, int rows, int cols, float camera_size)
 {
@@ -141,7 +132,7 @@ int create_camera(vector< Vector3d >& vertex_coordinates, vector< vector<int> >&
 
     return 0;
 }
-// used 11/24
+
 int create_camera(const Matrix3d& internal, const Matrix4d& external, const Vector3d& C, int r, int g, int b,
         int rows, int cols,
         const string& ply_file, float camera_size)
@@ -153,7 +144,6 @@ int create_camera(const Matrix3d& internal, const Matrix4d& external, const Vect
     vector< vector<int> > edge_indices;
     vector<Vector3d> colors;
 
-    //vector< Vector3d >& vertex_coordinates_external;
     //////////////////////////roi box///////////////////////////////////
 
     Matrix3d R;
@@ -319,7 +309,7 @@ int create_camera(const Matrix3d& internal, const Matrix4d& external, const Vect
 
 }
 
-//used 11/24
+
 Vector3d ReturnCenter(const Matrix4d& external){
 
     Vector3d C;
@@ -340,7 +330,7 @@ Vector3d ReturnCenter(const Matrix4d& external){
     return C;
 
 }
-//used 11/24
+
 int create_camera(const Matrix3d& internal, const Matrix4d& external, float camera_size, int r, int g, int b,
         int rows, int cols, const string& ply_file){
 
@@ -364,7 +354,6 @@ int create_camera(const Matrix3d& internal, const Matrix4d& external, float came
     return 0;
 }
 
-//used 11/24
 int create_cameras(const vector<Matrix3d>& internal, const vector<Matrix4d>& external, int r, int g, int b, int rows,
         int cols, const string& ply_file, float camera_size){
 
@@ -395,7 +384,7 @@ int create_cameras(const vector<Matrix3d>& internal, const vector<Matrix4d>& ext
 
         create_camera( local_vertex_coordinates, local_face_indices, internal[i], external[i], C, rows, cols, camera_size);
 
-        // now, translation to the global vertex indices.
+        // translation to the global vertex indices.
         int vertex_count = vertex_coordinates.size();
 
         for (int j = 0, jn = local_vertex_coordinates.size(); j < jn; j++){
@@ -463,7 +452,112 @@ int create_cameras(const vector<Matrix3d>& internal, const vector<Matrix4d>& ext
 
     return 0;
 }
-//used 11/24
+
+int create_cameras(const vector<Matrix3d>& internal, const vector<Matrix4d>& external,
+        const vector<vector<int> >& colors, int rows,
+        int cols, const string& ply_file, float camera_size){
+
+    vector< Vector3d > vertex_coordinates;
+    vector< vector<int> > face_indices;
+    vector< vector<int> > edge_indices;
+    Vector3d C;
+    Vector3d t;
+    Matrix3d R;
+
+    int number_cameras = external.size();
+    vector<int> camera_vertex_start(number_cameras + 1, 0);
+
+    for (int i = 0; i < number_cameras; i++){
+
+        for (int r0 = 0; r0 < 3; r0++){
+            for (int c = 0; c < 3; c++){
+                R(r0, c) = external[i](r0, c);
+            }
+
+            t(r0) = external[i](r0, 3);
+        }
+
+        C = -R.inverse()*t;
+
+
+        vector< Vector3d > local_vertex_coordinates;
+        vector< vector<int> > local_face_indices;
+
+        create_camera( local_vertex_coordinates, local_face_indices, internal[i], external[i], C, rows, cols, camera_size);
+
+        camera_vertex_start[i+1] = camera_vertex_start[i] + local_vertex_coordinates.size();
+
+        int vertex_count = vertex_coordinates.size();
+
+        for (int j = 0, jn = local_vertex_coordinates.size(); j < jn; j++){
+            vertex_coordinates.push_back(local_vertex_coordinates[j]);
+        }
+
+        for (int j = 0, jn = local_face_indices.size(); j < jn; j++){
+            for (int k = 0, kn = local_face_indices[j].size(); k < kn; k++){
+                local_face_indices[j][k] += vertex_count;
+            }
+
+            face_indices.push_back(local_face_indices[j]);
+        }
+
+    }
+
+    std::ofstream out;
+    out.open(ply_file.c_str());
+
+
+    out << "ply" << endl;
+    out << "format ascii 1.0" << endl;
+    out << "element vertex " << vertex_coordinates.size() << endl;
+    out << "property float x" << endl;
+    out << "property float y" << endl;
+    out << "property float z" << endl;
+    out << "property uchar red" << endl;
+    out << "property uchar green" << endl;
+    out << "property uchar blue" << endl;
+    out << "property uchar alpha" << endl;
+    out << "element face " << face_indices.size() << endl;
+    out << "property list uchar int vertex_indices"<< endl;
+
+    out << "end_header" << endl;
+
+    for (int i = 0, nc = vertex_coordinates.size(); i < nc; i++){
+        out << vertex_coordinates[i](0) << " " << vertex_coordinates[i](1) << " " << vertex_coordinates[i](2) << " ";
+
+        int cam_idx = 0;
+        for (int c = 0; c < number_cameras; c++) {
+            if (i >= camera_vertex_start[c] && i < camera_vertex_start[c+1]) {
+                cam_idx = c;
+                break;
+            }
+        }
+
+        const vector<int>& col = colors[cam_idx % colors.size()];
+        out << col[0] << " " << col[1] << " " << col[2] << " 255" << endl;
+    }
+
+    for (int i = 0; i < int(face_indices.size()); i++){
+
+        out << face_indices[i].size() << " ";
+
+
+        for (int j = 0; j < int(face_indices[i].size()); j++){
+            out << face_indices[i].at(j) << " ";
+        }
+
+
+        out << endl;
+
+    }
+
+
+    out.close();
+
+
+    return 0;
+}
+
 int create_tracks(vector<Vector3d>& one_track, int r, int g, int b, float offset,
         const Vector3d& offset_vector, const string& ply_file){
 
@@ -556,9 +650,8 @@ int create_tracks(vector<Vector3d>& one_track, int r, int g, int b, float offset
 }
 
 
-//used 11/24
 void WritePatternsCharuco(const vector<Vector3d>& pattern_points, int chess_h, int chess_w,
-        int index_number, const string& outfile){
+        int index_number, const string& outfile, const vector<int>& override_color){
 
 
     // each vertex needs a color ....
@@ -567,50 +660,49 @@ void WritePatternsCharuco(const vector<Vector3d>& pattern_points, int chess_h, i
     vector<vector<int> > colors;
 
     vector<int> c(3);
-    // lowest value is grey
-    c[0] = 0;
-    c[1] = 0;
-    c[2] = 0;
 
-    colors.push_back(c);
+    if (override_color.size() == 3) {
+        c = override_color;
+        colors.push_back(c);
+    } else {
+        c[0] = 0;
+        c[1] = 0;
+        c[2] = 0;
 
-    // next lowest value is purple
-    c[0] = 128;
-    c[1] = 0;
-    c[2] = 128;
-    colors.push_back(c);
+        colors.push_back(c);
 
-    // next lowest value is blue
-    c[0] = 0;
-    c[1] = 0;
-    c[2] = 200;
-    colors.push_back(c);
+        c[0] = 128;
+        c[1] = 0;
+        c[2] = 128;
+        colors.push_back(c);
 
-    // next lowest value is cyan
-    c[0] = 0;
-    c[1] = 255;
-    c[2] = 255;
-    colors.push_back(c);
+        c[0] = 0;
+        c[1] = 0;
+        c[2] = 200;
+        colors.push_back(c);
 
-    // next lowest value is green
-    c[0] = 0;
-    c[1] = 255;
-    c[2] = 0;
-    colors.push_back(c);
+        c[0] = 0;
+        c[1] = 255;
+        c[2] = 255;
+        colors.push_back(c);
 
-    // next lowest value is yellow
-    c[0] = 255;
-    c[1] = 255;
-    c[2] = 0;
-    colors.push_back(c);
+        c[0] = 0;
+        c[1] = 255;
+        c[2] = 0;
+        colors.push_back(c);
 
-    // next lowest value is red
-    c[0] = 255;
-    c[1] = 0;
-    c[2] = 0;
-    colors.push_back(c);
+        c[0] = 255;
+        c[1] = 255;
+        c[2] = 0;
+        colors.push_back(c);
 
-    c = colors[index_number % colors.size()];
+        c[0] = 255;
+        c[1] = 0;
+        c[2] = 0;
+        colors.push_back(c);
+
+        c = colors[index_number % colors.size()];
+    }
 
 
     cout << "Writing to " << outfile << endl;
@@ -671,9 +763,9 @@ void WritePatternsCharuco(const vector<Vector3d>& pattern_points, int chess_h, i
 
     out.close();
 }
-//used 11/24
+
 void WritePatternsApril(const vector<Vector3d>& pattern_points, int chess_h, int chess_w,
-        int index_number, const string& outfile){
+        int index_number, const string& outfile, const vector<int>& override_color){
 
 
     // each vertex needs a color ....
@@ -682,50 +774,49 @@ void WritePatternsApril(const vector<Vector3d>& pattern_points, int chess_h, int
     vector<vector<int> > colors;
 
     vector<int> c(3);
-    // lowest value is grey
-    c[0] = 0;
-    c[1] = 0;
-    c[2] = 0;
 
-    colors.push_back(c);
+    if (override_color.size() == 3) {
+        c = override_color;
+        colors.push_back(c);
+    } else {
+        c[0] = 0;
+        c[1] = 0;
+        c[2] = 0;
 
-    // next lowest value is purple
-    c[0] = 128;
-    c[1] = 0;
-    c[2] = 128;
-    colors.push_back(c);
+        colors.push_back(c);
 
-    // next lowest value is blue
-    c[0] = 0;
-    c[1] = 0;
-    c[2] = 200;
-    colors.push_back(c);
+        c[0] = 128;
+        c[1] = 0;
+        c[2] = 128;
+        colors.push_back(c);
 
-    // next lowest value is cyan
-    c[0] = 0;
-    c[1] = 255;
-    c[2] = 255;
-    colors.push_back(c);
+        c[0] = 0;
+        c[1] = 0;
+        c[2] = 200;
+        colors.push_back(c);
 
-    // next lowest value is green
-    c[0] = 0;
-    c[1] = 255;
-    c[2] = 0;
-    colors.push_back(c);
+        c[0] = 0;
+        c[1] = 255;
+        c[2] = 255;
+        colors.push_back(c);
 
-    // next lowest value is yellow
-    c[0] = 255;
-    c[1] = 255;
-    c[2] = 0;
-    colors.push_back(c);
+        c[0] = 0;
+        c[1] = 255;
+        c[2] = 0;
+        colors.push_back(c);
 
-    // next lowest value is red
-    c[0] = 255;
-    c[1] = 0;
-    c[2] = 0;
-    colors.push_back(c);
+        c[0] = 255;
+        c[1] = 255;
+        c[2] = 0;
+        colors.push_back(c);
 
-    c = colors[index_number % colors.size()];
+        c[0] = 255;
+        c[1] = 0;
+        c[2] = 0;
+        colors.push_back(c);
+
+        c = colors[index_number % colors.size()];
+    }
 
 
     cout << "Writing to " << outfile << endl;
@@ -774,59 +865,57 @@ void WritePatternsApril(const vector<Vector3d>& pattern_points, int chess_h, int
 }
 
 
-// used 1//24
-void WritePatternsSkips(const vector<Vector3d>& pattern_points, int index_number, const string& outfile){
+void WritePatternsSkips(const vector<Vector3d>& pattern_points, int index_number, const string& outfile,
+        const vector<int>& override_color){
 
     // each vertex needs a color ....
-    // first, find the range ....
 
     vector<vector<int> > colors;
 
     vector<int> c(3);
-    // lowest value is grey
-    c[0] = 0;
-    c[1] = 0;
-    c[2] = 0;
 
-    colors.push_back(c);
+    if (override_color.size() == 3) {
+        c = override_color;
+        colors.push_back(c);
+    } else {
+        c[0] = 0;
+        c[1] = 0;
+        c[2] = 0;
 
-    // next lowest value is purple
-    c[0] = 128;
-    c[1] = 0;
-    c[2] = 128;
-    colors.push_back(c);
+        colors.push_back(c);
 
-    // next lowest value is blue
-    c[0] = 255;
-    c[1] = 0;
-    c[2] = 0;
-    colors.push_back(c);
+        c[0] = 128;
+        c[1] = 0;
+        c[2] = 128;
+        colors.push_back(c);
 
-    // next lowest value is cyan
-    c[0] = 0;
-    c[1] = 255;
-    c[2] = 255;
-    colors.push_back(c);
+        c[0] = 255;
+        c[1] = 0;
+        c[2] = 0;
+        colors.push_back(c);
 
-    // next lowest value is green
-    c[0] = 0;
-    c[1] = 255;
-    c[2] = 0;
-    colors.push_back(c);
+        c[0] = 0;
+        c[1] = 255;
+        c[2] = 255;
+        colors.push_back(c);
 
-    // next lowest value is yellow
-    c[0] = 255;
-    c[1] = 255;
-    c[2] = 0;
-    colors.push_back(c);
+        c[0] = 0;
+        c[1] = 255;
+        c[2] = 0;
+        colors.push_back(c);
 
-    // next lowest value is red
-    c[0] = 255;
-    c[1] = 0;
-    c[2] = 0;
-    colors.push_back(c);
+        c[0] = 255;
+        c[1] = 255;
+        c[2] = 0;
+        colors.push_back(c);
 
-    c = colors[index_number % colors.size()];
+        c[0] = 255;
+        c[1] = 0;
+        c[2] = 0;
+        colors.push_back(c);
+
+        c = colors[index_number % colors.size()];
+    }
 
     if (pattern_points.size() > 0){
 
@@ -863,5 +952,83 @@ void WritePatternsSkips(const vector<Vector3d>& pattern_points, int index_number
     }
 }
 
+vector<int> HSVtoRGB(float h, float s, float v) {
+    // h in [0, 1], s in [0, 1], v in [0, 1]
+    vector<int> rgb(3, 0);
+    int hi = int(h * 6.0f) % 6;
+    float f = h * 6.0f - floor(h * 6.0f);
+    float p = v * (1.0f - s);
+    float q = v * (1.0f - f * s);
+    float t = v * (1.0f - (1.0f - f) * s);
 
+    float r, g, b;
+    switch (hi) {
+        case 0: r = v; g = t; b = p; break;
+        case 1: r = q; g = v; b = p; break;
+        case 2: r = p; g = v; b = t; break;
+        case 3: r = p; g = q; b = v; break;
+        case 4: r = t; g = p; b = v; break;
+        case 5: r = v; g = p; b = q; break;
+        default: r = v; g = v; b = v; break;
+    }
 
+    rgb[0] = min(255, max(0, int(r * 255.0f)));
+    rgb[1] = min(255, max(0, int(g * 255.0f)));
+    rgb[2] = min(255, max(0, int(b * 255.0f)));
+    return rgb;
+}
+
+vector<vector<int> > GenerateCameraColors(int n) {
+    vector<vector<int> > colors;
+    colors.reserve(n);
+    for (int i = 0; i < n; i++) {
+        float hue = float(i) / float(max(1, n));
+        colors.push_back(HSVtoRGB(hue, 0.85f, 0.9f));
+    }
+    return colors;
+}
+
+static int ParseColorToken(const string& s) {
+    if (s == "red")   return 255;
+    if (s == "green") return 255;
+    if (s == "blue")  return 255;
+    if (s == "white") return 255;
+    if (s == "black") return 0;
+    try { return stoi(s); }
+    catch (...) { return 128; }
+}
+
+vector<vector<int> > ParseColorList(const string& arg) {
+    vector<vector<int> > colors;
+    string current = arg;
+    size_t pipe_pos;
+
+    while ((pipe_pos = current.find('|')) != string::npos) {
+        string token = current.substr(0, pipe_pos);
+        current = current.substr(pipe_pos + 1);
+
+        size_t c1 = token.find(',');
+        size_t c2 = token.rfind(',');
+        if (c1 == string::npos || c2 == c1) continue;
+
+        vector<int> rgb(3);
+        rgb[0] = ParseColorToken(token.substr(0, c1));
+        rgb[1] = ParseColorToken(token.substr(c1 + 1, c2 - c1 - 1));
+        rgb[2] = ParseColorToken(token.substr(c2 + 1));
+        colors.push_back(rgb);
+    }
+
+    if (!current.empty()) {
+        size_t c1 = current.find(',');
+        size_t c2 = current.rfind(',');
+        if (c1 != string::npos && c2 != c1) {
+            vector<int> rgb(3);
+            rgb[0] = ParseColorToken(current.substr(0, c1));
+            rgb[1] = ParseColorToken(current.substr(c1 + 1, c2 - c1 - 1));
+            rgb[2] = ParseColorToken(current.substr(c2 + 1));
+            colors.push_back(rgb);
+        }
+    }
+
+    return colors;
+}

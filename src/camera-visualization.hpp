@@ -1,10 +1,3 @@
-/*
- * camera_visualization.hpp
- *
- *  Created on: Jun 18, 2018
- *      Author: atabb
- */
-
 #ifndef CAMERA_VISUALIZATION_HPP_
 #define CAMERA_VISUALIZATION_HPP_
 
@@ -24,18 +17,28 @@ int create_camera( vector< Vector3d >& vertex_coordinates, vector< vector<int> >
 int create_cameras(const vector<Matrix3d>& internal, const vector<Matrix4d>& external, int r, int g, int b, int rows,
 		int cols, const string& ply_file, float camera_size);
 
-void WritePatternsSkips(const vector<Vector3d>& pattern_points, int index_number, const string& outfile);
+int create_cameras(const vector<Matrix3d>& internal, const vector<Matrix4d>& external,
+        const vector<vector<int> >& colors, int rows,
+        int cols, const string& ply_file, float camera_size);
 
-void WritePatternsCharuco(const vector<Vector3d>& pattern_points, int chess_h, int chess_w, int index_number, const string& outfile);
+void WritePatternsSkips(const vector<Vector3d>& pattern_points, int index_number, const string& outfile,
+        const vector<int>& override_color = vector<int>());
+
+void WritePatternsCharuco(const vector<Vector3d>& pattern_points, int chess_h, int chess_w, int index_number,
+        const string& outfile, const vector<int>& override_color = vector<int>());
 
 void WritePatternsApril(const vector<Vector3d>& pattern_points, int chess_h, int chess_w,
-        int index_number, const string& outfile);
+        int index_number, const string& outfile, const vector<int>& override_color = vector<int>());
 
 Vector3d ReturnCenter(const Matrix4d& external);
 
 int create_tracks(vector<Vector3d>& one_track, int r, int g, int b, float offset,
         const Vector3d& offset_vector, const string& ply_file);
 
+vector<int> HSVtoRGB(float h, float s, float v);
 
+vector<vector<int> > GenerateCameraColors(int n);
+
+vector<vector<int> > ParseColorList(const string& arg);
 
 #endif /* CAMERA_VISUALIZATION_HPP_ */

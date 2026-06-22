@@ -56,7 +56,7 @@ RUN ldconfig
 
 WORKDIR /
 
-RUN git clone https://ceres-solver.googlesource.com/ceres-solver
+RUN git clone --recursive https://ceres-solver.googlesource.com/ceres-solver
 
 WORKDIR /ceres-build/
 
@@ -98,7 +98,7 @@ RUN ldconfig
 
 WORKDIR /
 
-RUN git clone https://github.com/amy-tabb/calico.git
+COPY src/ /calico/src/
 
 WORKDIR /calico/build/
 
