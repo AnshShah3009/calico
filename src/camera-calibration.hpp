@@ -49,6 +49,8 @@ public:
 
 	vector<int> internal_pattern_indices;
 
+	bool no_debug_images = false;
+
 	CameraCali(const string& read_dir, PatternsCreated* P, int max_ext_images,
 	        int max_int_images_read, int max_int_images_use);
 

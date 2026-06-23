@@ -268,6 +268,7 @@ void CameraCali::FindCornersCharuco(const string& write_dir, bool write_internal
     }
 
 
+    if (!no_debug_images) {
 #pragma omp parallel for private(filename)
     for (int i = 0; i < number_images; i++){
         if (i < number_external_images_max || write_internal_images){
@@ -276,6 +277,7 @@ void CameraCali::FindCornersCharuco(const string& write_dir, bool write_internal
             imwrite(filename.c_str(), images[i]);
 
         }
+    }
     }
 
 

@@ -1,5 +1,6 @@
 #include "Includes.hpp"
 #include "camera-visualization.hpp"
+#include "camera-calibration.hpp"
 
 struct CalicoOptions {
     bool dry_run = false;
@@ -13,15 +14,25 @@ struct CalicoOptions {
     bool no_progress = false;
     bool json_output = false;
     bool auto_rename = false;
+    bool no_visualization = false;
+    bool no_debug_images = false;
+    bool detection_summary = false;
+    bool per_camera_mse = false;
     int num_threads = omp_get_max_threads();
     int max_images = -1;
+    int min_boards = -1;
     string resume_dir = "";
     string config_file = "";
     vector<vector<int> > camera_colors;
     vector<vector<int> > pattern_colors;
     vector<string> camera_names_override;
     vector<string> exclude_cameras;
+    vector<string> focus_cameras;
 };
+
+void PrintDetectionSummary(const vector<CameraCali*>& CCV,
+        const vector<string>& camera_directories,
+        int number_patterns);
 
 void CreatePatterns(const string& input_dir, const string& output_dir,
         const string& src_file, bool is_charuco);

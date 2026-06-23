@@ -70,7 +70,13 @@ int main(int argc, char **argv){
     string resume_dir = "";
     string config_file = "";
     string exclude_camera_str = "";
+    string focus_camera_str = "";
     int max_images = -1;
+    int min_boards = -1;
+    int no_visualization = 0;
+    int no_debug_images = 0;
+    int detection_summary = 0;
+    int per_camera_mse = 0;
 
     if (argc == 1){
         print_help = 1;
@@ -122,6 +128,12 @@ int main(int argc, char **argv){
                 {"version", no_argument, &print_version, 1},
                 {"exclude-camera", required_argument, 0, 't'},
                 {"max-images", required_argument, 0, 'u'},
+                {"no-visualization", no_argument, &no_visualization, 1},
+                {"no-debug-images", no_argument, &no_debug_images, 1},
+                {"detection-summary", no_argument, &detection_summary, 1},
+                {"per-camera-mse", no_argument, &per_camera_mse, 1},
+                {"focus-camera", required_argument, 0, 'v'},
+                {"min-boards", required_argument, 0, 'w'},
         };
 
         if (argc == 1){ print_help = 1; }
@@ -199,6 +211,12 @@ int main(int argc, char **argv){
             cout << std::left << setw(30) << "--auto-rename " << "Rename output directory based on input name." << endl;
             cout << std::left << setw(30) << "--exclude-camera=[STR] " << "Comma-separated camera directories to exclude." << endl;
             cout << std::left << setw(30) << "--max-images=[INT] " << "Unified max images cap for all cameras." << endl;
+            cout << std::left << setw(30) << "--no-visualization " << "Skip writing PLY meshes and equation PNGs." << endl;
+            cout << std::left << setw(30) << "--no-debug-images " << "Skip per-image detection visualization PNGs." << endl;
+            cout << std::left << setw(30) << "--detection-summary " << "Print board visibility table per camera." << endl;
+            cout << std::left << setw(30) << "--per-camera-mse " << "Append per-camera reprojection MSE to total_results.txt." << endl;
+            cout << std::left << setw(30) << "--focus-camera=[STR] " << "Comma-separated cameras to calibrate (inverse of exclude)." << endl;
+            cout << std::left << setw(30) << "--min-boards=[INT] " << "Auto-exclude cameras detecting fewer than N boards." << endl;
 
             cout << "All other arguments are ignored." << endl;
             cout << endl << endl;
@@ -209,7 +227,7 @@ int main(int argc, char **argv){
         int option_index = 0;
         int opt_argument;
 
-        opt_argument = getopt_long (argc, argv, "abcdefghijklmnopqrs",
+        opt_argument = getopt_long (argc, argv, "abcdefghijklmnopqrstuvw",
                 long_options, &option_index);
 
         if (opt_argument == -1)
@@ -308,6 +326,12 @@ int main(int argc, char **argv){
         case 'u':
             max_images = FromString<int>(optarg);
             break;
+        case 'v':
+            focus_camera_str = optarg;
+            break;
+        case 'w':
+            min_boards = FromString<int>(optarg);
+            break;
 
         default:{
             cout << "Argument not found " << optarg << endl;
@@ -330,10 +354,16 @@ int main(int argc, char **argv){
     int cli_dry_run = dry_run;
     int cli_no_overwrite = no_overwrite;
     int cli_quiet = quiet;
+    int cli_no_visualization = no_visualization;
+    int cli_no_debug_images = no_debug_images;
+    int cli_detection_summary = detection_summary;
+    int cli_per_camera_mse = per_camera_mse;
+    int cli_min_boards = min_boards;
     string cli_camera_color_str = camera_color_str;
     string cli_pattern_color_str = pattern_color_str;
     string cli_camera_names_str = camera_names_str;
     string cli_exclude_camera_str = exclude_camera_str;
+    string cli_focus_camera_str = focus_camera_str;
     int cli_number_threads = number_threads;
     int cli_max_internal_read = max_internal_read;
     int cli_max_internal_use = max_internal_use;
@@ -397,6 +427,13 @@ int main(int argc, char **argv){
                 } else if (key == "focal-px" || key == "focal_px") { if (fval > 0) initial_focal_px = fval;
                 } else if (key == "perc-ae" || key == "perc_ae") { if (fval > 0) percentage_global_alg = fval;
                 } else if (key == "perc-rp" || key == "perc_rp") { if (fval > 0) percentage_global_rp = fval;
+                } else if (key == "no-visualization" || key == "no_visualization") { if (ival) no_visualization = 1;
+                } else if (key == "no-debug-images" || key == "no_debug_images") { if (ival) no_debug_images = 1;
+                } else if (key == "detection-summary" || key == "detection_summary") { if (ival) detection_summary = 1;
+                } else if (key == "per-camera-mse" || key == "per_camera_mse") { if (ival) per_camera_mse = 1;
+                } else if (key == "focus-camera" || key == "focus_camera") {
+                    if (!val_str.empty()) focus_camera_str = val_str;
+                } else if (key == "min-boards" || key == "min_boards") { if (ival > 0) min_boards = ival;
                 }
             }
             cfg.close();
@@ -411,10 +448,16 @@ int main(int argc, char **argv){
     if (cli_dry_run) dry_run = 1;
     if (cli_no_overwrite) no_overwrite = 1;
     if (cli_quiet) quiet = 1;
+    if (cli_no_visualization) no_visualization = 1;
+    if (cli_no_debug_images) no_debug_images = 1;
+    if (cli_detection_summary) detection_summary = 1;
+    if (cli_per_camera_mse) per_camera_mse = 1;
+    if (cli_min_boards >= 0) min_boards = cli_min_boards;
     if (cli_camera_color_str.size()) camera_color_str = cli_camera_color_str;
     if (cli_pattern_color_str.size()) pattern_color_str = cli_pattern_color_str;
     if (cli_camera_names_str.size()) camera_names_str = cli_camera_names_str;
     if (cli_exclude_camera_str.size()) exclude_camera_str = cli_exclude_camera_str;
+    if (cli_focus_camera_str.size()) focus_camera_str = cli_focus_camera_str;
     if (cli_number_threads != (int)omp_get_max_threads()) number_threads = cli_number_threads;
     if (cli_max_internal_read >= 0) max_internal_read = cli_max_internal_read;
     if (cli_max_internal_use >= 0) max_internal_use = cli_max_internal_use;
@@ -440,12 +483,29 @@ int main(int argc, char **argv){
     opts.no_progress = (no_progress == 1);
     opts.json_output = (json_output == 1);
     opts.auto_rename = (auto_rename == 1);
+    opts.no_visualization = (no_visualization == 1);
+    opts.no_debug_images = (no_debug_images == 1);
+    opts.detection_summary = (detection_summary == 1);
+    opts.per_camera_mse = (per_camera_mse == 1);
+    opts.min_boards = min_boards;
     opts.num_threads = number_threads;
     opts.max_images = max_images;
     opts.resume_dir = resume_dir;
     opts.config_file = config_file;
 
     g_num_threads = number_threads;
+
+    // Parse --focus-camera
+    if (focus_camera_str.size() > 0) {
+        size_t start = 0, end;
+        while ((end = focus_camera_str.find(',', start)) != string::npos) {
+            opts.focus_cameras.push_back(focus_camera_str.substr(start, end - start));
+            start = end + 1;
+        }
+        if (start < focus_camera_str.size()) {
+            opts.focus_cameras.push_back(focus_camera_str.substr(start));
+        }
+    }
 
     // Parse --exclude-camera
     if (exclude_camera_str.size() > 0) {
@@ -752,6 +812,23 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
         exit(1);
     }
 
+    // Filter to focus cameras only (if specified)
+    if (options.focus_cameras.size() > 0) {
+        for (auto it = camera_directories.begin(); it != camera_directories.end(); ) {
+            if (std::find(options.focus_cameras.begin(), options.focus_cameras.end(), *it)
+                    == options.focus_cameras.end()) {
+                cout << "Excluding camera (not in --focus-camera): " << *it << endl;
+                it = camera_directories.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        if (camera_directories.size() == 0) {
+            cout << "No cameras match --focus-camera list, abort." << endl;
+            exit(1);
+        }
+    }
+
     // Filter excluded cameras
     if (options.exclude_cameras.size() > 0) {
         for (auto it = camera_directories.begin(); it != camera_directories.end(); ) {
@@ -823,6 +900,7 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
         }
 
         CCV[i] = C;
+        CCV[i]->no_debug_images = options.no_debug_images;
 
         id_camera_dir = output_dir + "data/" + camera_directories[i] + "/";
         camera_write_dirs[i] = id_camera_dir;
@@ -843,6 +921,37 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
 
         }
 
+    }
+
+    // --min-boards: auto-exclude cameras detecting fewer than N distinct boards
+    if (options.min_boards > 0) {
+        for (int i = number_cameras - 1; i >= 0; i--) {
+            int board_count = 0;
+            for (int j = 0; j < (int)CCV[i]->boards_detected.size(); j++) {
+                for (size_t k = 0; k < CCV[i]->boards_detected[j].size(); k++) {
+                    if (CCV[i]->boards_detected[j][k]) { board_count++; break; }
+                }
+            }
+            if (board_count < options.min_boards) {
+                cout << "Excluding camera (only " << board_count << " boards < --min-boards="
+                     << options.min_boards << "): " << camera_directories[i] << endl;
+                delete CCV[i];
+                CCV.erase(CCV.begin() + i);
+                camera_directories.erase(camera_directories.begin() + i);
+                original_camera_dirs.erase(original_camera_dirs.begin() + i);
+                camera_write_dirs.erase(camera_write_dirs.begin() + i);
+                number_cameras--;
+            }
+        }
+        if (number_cameras == 0) {
+            cout << "All cameras excluded by --min-boards, abort." << endl;
+            exit(1);
+        }
+    }
+
+    // --detection-summary: print board visibility per camera
+    if (options.detection_summary) {
+        PrintDetectionSummary(CCV, camera_directories, P_Class->pp.numberBoards);
     }
 
     auto end_find_id_calibrate = std::chrono::high_resolution_clock::now();
@@ -1037,7 +1146,9 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
 
     /////////////////////////////////// OUTPUT SECTION ////////////////////////////////////////////
 
-    MC.ReconstructionAccuracyErrorAndWriteII(reconstructed_patterns_dir, 2, CCV, camera_params, rae_ceres_out);
+    if (!options.no_visualization) {
+        MC.ReconstructionAccuracyErrorAndWriteII(reconstructed_patterns_dir, 2, CCV, camera_params, rae_ceres_out);
+    }
 
     rae_ceres_out.close();
 
@@ -1083,9 +1194,10 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
     out << "MetaTotal, without load+internal/external cali, just network cali ... " <<   std::chrono::duration_cast<std::chrono::minutes>(end_stage_5 - end_find_id_calibrate).count()
                                                                                                                             << " minutes "<< endl;
 
-    // Use camera colors if provided, otherwise per-camera distinct colors will be generated
-    MC.WriteSolutionAssessErrorII(output_dir, camera_directories, CCV, 2, true, camera_size, track_size,
-            options.camera_colors, options.pattern_colors, show_progress);
+    if (!options.no_visualization) {
+        MC.WriteSolutionAssessErrorII(output_dir, camera_directories, CCV, 2, true, camera_size, track_size,
+                options.camera_colors, options.pattern_colors, show_progress);
+    }
 
     out.close();
     ceres_out.close();
@@ -1110,6 +1222,23 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
                           << CCV[i]->distortion[2] << ","
                           << CCV[i]->distortion[3] << ","
                           << CCV[i]->distortion[4];
+            }
+            // --per-camera-mse: append mean reprojection error
+            if (options.per_camera_mse && CCV[i]->reproj_error_per_board.size() > 0) {
+                double sum_err = 0;
+                int count = 0;
+                for (size_t j = 0; j < CCV[i]->reproj_error_per_board.size(); j++) {
+                    for (size_t k = 0; k < CCV[i]->reproj_error_per_board[j].size(); k++) {
+                        if (CCV[i]->reproj_error_per_board[j][k] >= 0) {
+                            sum_err += CCV[i]->reproj_error_per_board[j][k];
+                            count++;
+                        }
+                    }
+                }
+                if (count > 0) {
+                    double mse = sum_err / count;
+                    total_out << ", mse=" << mse;
+                }
             }
             total_out << endl;
         }
@@ -1189,6 +1318,36 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
 
     delete P_Class;
 
+}
+
+void PrintDetectionSummary(const vector<CameraCali*>& CCV,
+        const vector<string>& camera_directories,
+        int number_patterns) {
+    cout << "\n=== DETECTION SUMMARY ===" << endl;
+    cout << "Camera" << "\t" << "Images" << "\t" << "Boards";
+    for (int p = 0; p < number_patterns; p++) cout << "\tB" << p;
+    cout << endl;
+
+    for (size_t i = 0; i < CCV.size(); i++) {
+        int n_images = CCV[i]->boards_detected.size();
+        int board_count = 0;
+        vector<bool> has_board(number_patterns, false);
+        for (int j = 0; j < n_images; j++) {
+            for (int p = 0; p < number_patterns && p < (int)CCV[i]->boards_detected[j].size(); p++) {
+                if (CCV[i]->boards_detected[j][p]) {
+                    has_board[p] = true;
+                }
+            }
+        }
+        for (int p = 0; p < number_patterns; p++) if (has_board[p]) board_count++;
+
+        cout << camera_directories[i] << "\t" << n_images << "\t" << board_count;
+        for (int p = 0; p < number_patterns; p++) {
+            cout << "\t" << (has_board[p] ? "Y" : ".");
+        }
+        cout << endl;
+    }
+    cout << "=========================\n" << endl;
 }
 
 void DryRunValidation(const string& input_dir, const string& output_dir,
