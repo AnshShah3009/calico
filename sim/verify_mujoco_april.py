@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BOARD_SRC = ROOT / "results" / "april-pat" / "patterns"
 SIM_ROOT = Path.home() / "calico-mujoco-sim"
 OUT_IN = SIM_ROOT / "mujoco-april-in"
-OUT_CALI = SIM_ROOT / "mujoco-april-out-k2"
+OUT_CALI = SIM_ROOT / "mujoco-april-out-sep"
 PREVIEWS = SIM_ROOT / "preview"
 
 # Match configs/april-grid.yaml + pattern_square_mm
@@ -101,12 +101,12 @@ def board_half_m() -> float:
 
 
 def camera_specs() -> list:
-    target = np.array([0.0, 0.0, 0.20])
+    target = np.array([0.0, 0.0, 0.22])
     up = np.array([0.0, 0.0, 1.0])
     eyes = [
-        np.array([0.00, -0.90, 0.52]),
-        np.array([0.58, -0.78, 0.48]),
-        np.array([-0.55, -0.82, 0.50]),
+        np.array([0.00, -0.72, 0.42]),
+        np.array([0.48, -0.62, 0.40]),
+        np.array([-0.48, -0.62, 0.40]),
     ]
     cams = []
     for i, eye in enumerate(eyes):
@@ -124,18 +124,19 @@ def camera_specs() -> list:
 
 
 def board_pose(frame: int, board: int) -> tuple:
-    t = frame * 0.45
+    # Boards are 0.3 m wide; keep a ~0.2 m gap so they never read as one sheet.
+    t = frame * 0.35
     side = -1.0 if board == 0 else 1.0
     pos = np.array(
         [
-            side * 0.16 + 0.03 * math.sin(t + board),
-            0.02 * math.cos(t * 0.7 + board),
-            0.18 + 0.03 * math.sin(t * 0.5 + 0.4 * board),
+            side * 0.38 + 0.02 * math.sin(t + board),
+            0.04 * board + 0.015 * math.cos(t * 0.7),
+            0.20 + 0.02 * math.sin(t * 0.4 + board),
         ]
     )
-    yaw = side * 0.18 + 0.12 * math.sin(t * 0.8)
-    pitch = 0.08 * math.cos(t * 0.6 + board)
-    roll = 0.05 * math.sin(t + 0.3 * board)
+    yaw = side * 0.32 + 0.06 * math.sin(t * 0.5)
+    pitch = 0.04 * math.cos(t * 0.4 + board)
+    roll = 0.03 * math.sin(t * 0.3 + board)
     quat = euler_zyx_to_quat(yaw, pitch, roll)
     return pos, quat
 
@@ -261,21 +262,57 @@ def paste_board(canvas: np.ndarray, tex: np.ndarray, dst: np.ndarray) -> None:
     th, tw = tex.shape[:2]
     src = np.array([[0, 0], [tw - 1, 0], [tw - 1, th - 1], [0, th - 1]], np.float32)
     M = cv2.getPerspectiveTransform(src, dst.astype(np.float32))
-    warped = cv2.warpPerspective(tex, M, (canvas.shape[1], canvas.shape[0]), flags=cv2.INTER_NEAREST)
+    warped = cv2.warpPerspective(tex, M, (canvas.shape[1], canvas.shape[0]), flags=cv2.INTER_LINEAR)
     mask = np.zeros(canvas.shape[:2], np.uint8)
     cv2.fillConvexPoly(mask, np.round(dst).astype(np.int32), 255)
     canvas[mask > 0] = warped[mask > 0]
 
 
-def project_points(T_wc: np.ndarray, K: np.ndarray, pts_w: np.ndarray):
+def project_points(T_wc: np.ndarray, K: np.ndarray, pts_w: np.ndarray, require_all_in_front: bool = True):
     R, t = T_wc[:3, :3], T_wc[:3, 3]
     p_cam = (R.T @ (pts_w - t).T).T
-    if np.any(p_cam[:, 2] <= 1e-4):
+    if require_all_in_front and np.any(p_cam[:, 2] <= 1e-4):
         return None, None
+    z = np.maximum(p_cam[:, 2], 1e-4)
     uvw = (K @ p_cam.T).T
-    uv = uvw[:, :2] / uvw[:, 2:3]
-    zmean = float(p_cam[:, 2].mean())
+    uv = uvw[:, :2] / z[:, None]
+    in_front = p_cam[:, 2] > 1e-4
+    if not np.any(in_front):
+        return None, None
+    zmean = float(p_cam[in_front, 2].mean())
     return uv, zmean
+
+
+def draw_room(canvas: np.ndarray, T_wc: np.ndarray, K: np.ndarray) -> None:
+    """Gray floor + back wall so the two boards sit in a room, not a void."""
+    canvas[:] = (42, 40, 38)
+    xs = np.linspace(-1.6, 1.6, 17)
+    ys = np.linspace(-0.2, 1.4, 9)
+    color_line = (118, 114, 110)
+    for i in range(len(ys) - 1):
+        for j in range(len(xs) - 1):
+            quad_w = np.array(
+                [
+                    [xs[j], ys[i], 0.0],
+                    [xs[j + 1], ys[i], 0.0],
+                    [xs[j + 1], ys[i + 1], 0.0],
+                    [xs[j], ys[i + 1], 0.0],
+                ],
+                dtype=np.float64,
+            )
+            uv, _ = project_points(T_wc, K, quad_w, require_all_in_front=True)
+            if uv is None:
+                continue
+            shade = (88, 84, 80) if (i + j) % 2 == 0 else (78, 74, 70)
+            cv2.fillConvexPoly(canvas, np.round(uv).astype(np.int32), shade)
+            cv2.polylines(canvas, [np.round(uv).astype(np.int32)], True, color_line, 1, cv2.LINE_AA)
+    wall = np.array(
+        [[-1.6, 1.35, 0.0], [1.6, 1.35, 0.0], [1.6, 1.35, 1.2], [-1.6, 1.35, 1.2]],
+        dtype=np.float64,
+    )
+    uvw, _ = project_points(T_wc, K, wall, require_all_in_front=True)
+    if uvw is not None:
+        cv2.fillConvexPoly(canvas, np.round(uvw).astype(np.int32), (58, 56, 54))
 
 
 def render_pinhole(model, data, textures, half: float, cams, K: np.ndarray):
@@ -292,7 +329,8 @@ def render_pinhole(model, data, textures, half: float, cams, K: np.ndarray):
     row = []
     for c in cams:
         T_wc = T_opencv_from_mj_camera(model, data, c["name"])
-        canvas = np.full((HEIGHT, WIDTH, 3), 48, dtype=np.uint8)
+        canvas = np.zeros((HEIGHT, WIDTH, 3), dtype=np.uint8)
+        draw_room(canvas, T_wc, K)
         layers = []
         for b in range(N_BOARDS):
             bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, f"board{b}")
@@ -301,8 +339,6 @@ def render_pinhole(model, data, textures, half: float, cams, K: np.ndarray):
             pts_w = (R @ corners_local.T).T + t
             uv, zmean = project_points(T_wc, K, pts_w)
             if uv is None:
-                continue
-            if np.any(uv[:, 0] < -50) or np.any(uv[:, 0] > WIDTH + 50):
                 continue
             layers.append((zmean, uv, textures[b]))
         layers.sort(key=lambda x: -x[0])
@@ -339,9 +375,22 @@ def render_scene() -> tuple:
         row = render_pinhole(model, data, textures, half, cams, K)
         frames.append(row)
         if fi == 0:
+            labeled_row = []
             for ci, c in enumerate(cams):
-                cv2.imwrite(str(PREVIEWS / f"{c['name']}_t0.png"), row[ci])
-            cv2.imwrite(str(PREVIEWS / "t0_all_cams.png"), np.hstack(row))
+                labeled = row[ci].copy()
+                cv2.putText(
+                    labeled,
+                    c["name"],
+                    (24, 48),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1.2,
+                    (240, 240, 240),
+                    2,
+                    cv2.LINE_AA,
+                )
+                cv2.imwrite(str(PREVIEWS / f"{c['name']}_t0.png"), labeled)
+                labeled_row.append(labeled)
+            cv2.imwrite(str(PREVIEWS / "t0_all_cams.png"), np.hstack(labeled_row))
     write_dataset(frames, cams)
     return cams
 
@@ -476,10 +525,14 @@ def compare() -> int:
 
 
 def main() -> int:
+    preview_only = "--preview-only" in sys.argv
     print("MuJoCo", mujoco.__version__, "GL", os.environ.get("MUJOCO_GL"))
     print("Rendering AprilTag scene...")
     render_scene()
     print("Wrote", OUT_IN)
+    print("Preview", PREVIEWS / "t0_all_cams.png")
+    if preview_only:
+        return 0
     run_calico()
     return compare()
 
