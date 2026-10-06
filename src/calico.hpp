@@ -28,6 +28,8 @@ struct CalicoOptions {
     vector<string> camera_names_override;
     vector<string> exclude_cameras;
     vector<string> focus_cameras;
+    bool use_cuda = false;
+    string ingest_intrinsics_dir = "";
 };
 
 void PrintDetectionSummary(const vector<CameraCali*>& CCV,

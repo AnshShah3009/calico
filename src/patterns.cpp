@@ -9,6 +9,7 @@
 #include "helper-cali.hpp"
 #include "helper.hpp"
 #include "pattern-parameters.hpp"
+#include <numeric>
 
 // used 11/27
 Scalar PatternsCreated::Color(int index){
@@ -100,7 +101,7 @@ void PatternsCreated::ConstructAprilTagVersion(const string& read_dir, const str
 
     vector<int> start_marker_counts;
 
-    detectorParams = aruco::DetectorParameters::create();
+    detectorParams = CalicoCreateDetectorParams();
 
     bool readOk = readDetectorParameters(src_file, detectorParams);
     if(!readOk) {
@@ -170,7 +171,7 @@ void PatternsCreated::ConstructAprilTagVersion(const string& read_dir, const str
         imwrite(filename.c_str(), april_images[i]);
 
         markedImage = april_images[i].clone();
-        cvtColor(markedImage, imageCopy, CV_GRAY2BGR);
+        cvtColor(markedImage, imageCopy, COLOR_GRAY2BGR);
 
         cout << "Before detections " << i << endl;
 
@@ -320,7 +321,7 @@ void PatternsCreated::ConstructCharucoVersionNoRotate(const string& read_dir, co
     }
 
     // set everything up
-    dictionary = aruco::getPredefinedDictionary(aruco::PREDEFINED_DICTIONARY_NAME(pp.arc_code));
+    dictionary = CalicoGetDictionary(pp.arc_code);
 
     Size imageSize;
 
@@ -330,7 +331,7 @@ void PatternsCreated::ConstructCharucoVersionNoRotate(const string& read_dir, co
     number_corners_per_pattern = (pp.squaresX - 1)*(pp.squaresY - 1);
 
 
-    detectorParams = aruco::DetectorParameters::create();
+    detectorParams = CalicoCreateDetectorParams();
 
     bool readOk = readDetectorParameters(src_file, detectorParams);
     if(!readOk) {
@@ -347,20 +348,20 @@ void PatternsCreated::ConstructCharucoVersionNoRotate(const string& read_dir, co
     ofstream out;
 
     for (int i = 0, m = 0; i < pp.numberBoards; i++){
-        /// the dimensions of the board are linked in here ....
-        boards.push_back(cv::aruco::CharucoBoard::create(pp.squaresX, pp.squaresY, pp.squareLength, pp.markerLength, dictionary));
-
         pattern_start_marker_indexes.push_back(m);
 
-        number_markers_per_pattern = boards[i]->ids.size();
-
-        for (int j = 0; j < number_markers_per_pattern; j++, m++){
-            boards[i]->ids[j] = m;
-        }
+        auto default_board = CalicoCreateCharucoBoard(pp.squaresX, pp.squaresY, pp.squareLength,
+                pp.markerLength, dictionary);
+        vector<int> board_ids(CharucoIds(default_board).size());
+        iota(board_ids.begin(), board_ids.end(), m);
+        boards.push_back(CalicoCreateCharucoBoard(pp.squaresX, pp.squaresY, pp.squareLength,
+                pp.markerLength, dictionary, board_ids));
+        number_markers_per_pattern = board_ids.size();
+        m += number_markers_per_pattern;
 
         Mat boardImage(imageSize.height, imageSize.width, CV_8UC1, 255);
 
-        boards[i]->draw( imageSize, boardImage, pp.margins, 1 );
+        CalicoGenerateBoardImage(boards[i], imageSize, boardImage, pp.margins, 1);
         filename = write_dir + "Board" + ToString<int>(i) + ".png";
         imwrite(filename.c_str(), boardImage);
 
@@ -369,13 +370,20 @@ void PatternsCreated::ConstructCharucoVersionNoRotate(const string& read_dir, co
 
         vector< vector< Point2f > > corners, rejected;
         vector< int > ids;
-        // detect markers and estimate pose
-        aruco::detectMarkers(boardImage, dictionary, corners, ids, detectorParams, rejected);
+        CalicoDetectMarkers(boardImage, dictionary, corners, ids, detectorParams, rejected);
+        cout << "Generated Board" << i << " markers " << ids.size()
+             << " rejected " << rejected.size() << endl;
 
         std::vector<cv::Point2f> charucoCorners;
         std::vector<int> charucoIds;
 
+#if CALICO_ARUCO_MODERN
+        CalicoInterpolateCharuco(boardImage, boards[i], corners, ids, rejected,
+                charucoCorners, charucoIds, detectorParams);
+        cout << "Generated Board" << i << " charuco corners " << charucoIds.size() << endl;
+#else
         cv::aruco::interpolateCornersCharuco(corners, ids, boardImage, boards[i], charucoCorners, charucoIds);
+#endif
 
         aruco::drawDetectedMarkers(boardCopy, corners, ids, Scalar(255, 255, 0));
 
@@ -421,9 +429,6 @@ void PatternsCreated::ConstructCharucoVersionNoRotate(const string& read_dir, co
         three_d_points = vector< cv::Point3f >(number_corners_per_pattern*pp.numberBoards, cv::Point3f());
 
         int sm = 0;
-        ofstream out;
-        string filen = "test.txt";
-        out.open(filen.c_str());
 
         for (int i = 0, sc = 0; i < pp.numberBoards; i++){
 
@@ -437,20 +442,13 @@ void PatternsCreated::ConstructCharucoVersionNoRotate(const string& read_dir, co
 
             pattern_id_marker_indexes_to_vector.push_back(current_index);
 
-            // check that this gets created.
-            out << "BOARD NUMBER " << i << endl;
-            for (int r = 0; r < pp.squaresY - 1; r++){
-                for (int c = 0; c < pp.squaresX - 1; c++, sm++){
-                    Point3f p(pp.squareLength_mm*float(c), float(r)*pp.squareLength_mm, 0);
-                    three_d_points[sm] = p;
-                    out << three_d_points[sm].x << ", "<< three_d_points[sm].y << "," << three_d_points[sm].z << endl;
-                }
+            const vector<Point3f>& board_corners = CharucoChessboardCorners(boards[i]);
+            const float physical_scale = (pp.squareLength > 0) ? (pp.squareLength_mm / pp.squareLength) : 1.f;
+            for (size_t ci = 0; ci < board_corners.size(); ci++, sm++) {
+                three_d_points[sm] = board_corners[ci] * physical_scale;
             }
-            out << "INDEX : " << sm << endl;
-
 
         }
-        out.close();
     }
 
 }

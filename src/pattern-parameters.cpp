@@ -94,7 +94,8 @@ bool ValidatePatternParams(const patternParameters& pp, const string& spec_file)
 
     if (pp.type == charuco) {
         int dict_size = GetArucoDictionarySize(pp.arc_code);
-        int needed_markers = pp.squaresX * pp.squaresY * pp.numberBoards;
+        // ChArUco places markers on white squares only (~half the chessboard cells).
+        int needed_markers = ((pp.squaresX * pp.squaresY + 1) / 2) * pp.numberBoards;
         if (dict_size > 0 && needed_markers > dict_size) {
             cerr << "ERROR: need " << needed_markers << " markers but aruco dictionary "
                  << pp.arc_code << " only has " << dict_size

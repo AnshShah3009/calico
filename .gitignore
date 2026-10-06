@@ -2,3 +2,7 @@ build/
 exif.txt
 .project
 .cproject
+DATA/
+*.pdf
+src/test.txt
+results/

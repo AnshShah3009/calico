@@ -9,6 +9,7 @@
 #include "camera-visualization.hpp"
 #include "helper.hpp"
 #include "solving-structure.hpp"
+#include "cuda-detect.hpp"
 // used 11/27
 void SolveWithShahsMethod(Matrix4d& Result, const vector<Matrix4d>& LHS, const vector<Matrix4d>& RHS, bool verbose){
 
@@ -356,6 +357,7 @@ void ReconstructXFunctionIDsMCwithDLTs(MCcali& MC, vector<Matrix4d>& vector_vari
 
             has_values[k] = true;
             Solver::Options options;
+            calico_cuda::ApplyCeresOptions(options, g_use_cuda != 0);
             options.linear_solver_type = ceres::DENSE_QR;
             options.minimizer_progress_to_stdout = false;
             Solver::Summary summary;
@@ -925,6 +927,7 @@ void CeresProblemClass::SolveWriteBackToMCAlgebraicError(MCcali& MC, std::ofstre
 
 
     Solver::Options options;
+    calico_cuda::ApplyCeresOptions(options, g_use_cuda != 0);
     options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
 
     options.minimizer_progress_to_stdout = output_to_terminal;
@@ -972,6 +975,7 @@ void CeresProblemClass::SolveWriteBackToMCRP(MCcali& MC, std::ofstream& out, int
 
     Solver::Options options;
 
+    calico_cuda::ApplyCeresOptions(options, g_use_cuda != 0);
     options.linear_solver_type = ceres::DENSE_SCHUR;
 
     options.minimizer_progress_to_stdout = output_to_terminal;
@@ -1106,6 +1110,7 @@ void XASolveIteratively(vector<Matrix4d>& As, Matrix4d& X, PARAM_TYPE param_type
     }
 
     Solver::Options options;
+    calico_cuda::ApplyCeresOptions(options, g_use_cuda != 0);
     options.linear_solver_type = ceres::DENSE_QR;
 
     options.minimizer_progress_to_stdout = false;
@@ -1172,6 +1177,7 @@ void AXZBSolveIteratively(vector<Matrix4d>& As, vector<Matrix4d>& Bs, Matrix4d& 
     }
 
     Solver::Options options;
+    calico_cuda::ApplyCeresOptions(options, g_use_cuda != 0);
     options.linear_solver_type = ceres::DENSE_QR;
 
     options.minimizer_progress_to_stdout = true;
