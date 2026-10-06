@@ -56,11 +56,23 @@ There is no `cv::cuda::aruco` API.
 
 `--use-cuda` (no-op if the binary was built without `ENABLE_CUDA`):
 
-- GPU BGR→gray (OpenCV `cudaimgproc` if present, otherwise `apriltag_cuda.cu`)
-- AprilTag: NVIDIA **cuAprilTags** for `tag36h11` when headers/libs are passed into CMake; otherwise GPU gray + CPU Kaess/AprilRobotics detector
+- GPU BGR→gray (`apriltag_cuda.cu`; OpenCV `cudaimgproc` only if you built OpenCV 5 with `opencv_contrib` `cudev`)
+- AprilTag: NVIDIA **cuAprilTags** for `tag36h11` when headers/libs are passed into CMake; otherwise GPU gray + CPU Kaess/AprilRobotics (or OpenCV `DICT_APRILTAG_*`)
 - Ceres dense CUDA when Ceres was built with `USE_CUDA`
 
+The Docker CUDA image does **not** vendor cuAprilTags or OpenCV contrib; `--use-cuda --april` still GPU-converts frames, then detects on CPU.
+
 ChArUco detection stays on CPU (OpenCV has no `cv::cuda::aruco`). `--use-cuda` still runs a GPU BGR→gray probe and, if Ceres was built with CUDA, the dense solver.
+
+## AprilTag grids
+
+`--april` (exclusive with `--charuco`) uses a grid of AprilTags (`squaresX` × `squaresY` tags, `tagSpace` gap, one or more `numberBoards`).
+
+Supported families: `tag36h11` (default), `tag25h9`, `tag16h5` (render + detect), plus Kaess `tag25h7` / `tag36h9` (detect; OpenCV can render `tag36h11` / `tag25h9` / `tag16h5`). Aliases such as `tagCodes36h11` are accepted.
+
+Detection order: GPU **cuAprilTags** (`tag36h11` only, if linked) → Kaess CPU → OpenCV `DICT_APRILTAG_*`. `--use-cuda` always GPU-converts BGR→gray first.
+
+Example spec: `configs/april-grid.yaml`. Generate with `--april --create-patterns`, then calibrate with `--april --calibrate`.
 
 ## Running
 

@@ -1324,6 +1324,7 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
         json_out << "  \"duration_sec\": " << total_sec << "," << endl;
         json_out << "  \"opencv\": \"" << CV_MAJOR_VERSION << "." << CV_MINOR_VERSION << "." << CV_SUBMINOR_VERSION << "\"," << endl;
         json_out << "  \"cuda\": " << (g_use_cuda ? "true" : "false") << "," << endl;
+        json_out << "  \"pattern\": \"" << (is_charuco ? "charuco" : "april") << "\"," << endl;
         json_out << "  \"cameras\": [" << endl;
         for (int i = 0; i < number_cameras; i++) {
             json_out << "    {" << endl;
@@ -1479,6 +1480,9 @@ void DryRunValidation(const string& input_dir, const string& output_dir,
         if (is_charuco) {
             cout << "  Marker length: " << pp.markerLength << " px" << endl;
             cout << "  Aruco dict code: " << pp.arc_code << endl;
+        } else {
+            cout << "  Tag family: " << NormalizeAprilFamily(pp.april_family) << endl;
+            cout << "  Tag spacing: " << pp.tagSpace << " px" << endl;
         }
 
         bool valid = ValidatePatternParams(pp, spec_file);

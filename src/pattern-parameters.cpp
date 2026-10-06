@@ -20,6 +20,11 @@ bool readAprilTagSpecificationFile(string filename, patternParameters &params) {
     fs["tagSpace"] >> params.tagSpace;
     fs["numberBoards"] >> params.numberBoards;
     fs["april_family"] >> params.april_family;
+    if (params.april_family.empty()) {
+        params.april_family = "tag36h11";
+    }
+    params.april_family = NormalizeAprilFamily(params.april_family);
+    params.type = april;
     return true;
 }
 
@@ -100,6 +105,21 @@ bool ValidatePatternParams(const patternParameters& pp, const string& spec_file)
             cerr << "ERROR: need " << needed_markers << " markers but aruco dictionary "
                  << pp.arc_code << " only has " << dict_size
                  << " markers in " << spec_file << endl;
+            ok = false;
+        }
+    }
+
+    if (pp.type == april) {
+        const int dict_size = AprilFamilyCapacity(pp.april_family);
+        const int needed = pp.squaresX * pp.squaresY * pp.numberBoards;
+        if (dict_size > 0 && needed > dict_size) {
+            cerr << "ERROR: AprilTag grid needs " << needed << " tags but family "
+                 << pp.april_family << " only has " << dict_size
+                 << " in " << spec_file << endl;
+            ok = false;
+        }
+        if (pp.tagSpace < 0) {
+            cerr << "ERROR: tagSpace must be >= 0 in " << spec_file << endl;
             ok = false;
         }
     }

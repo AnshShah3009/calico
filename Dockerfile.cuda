@@ -17,12 +17,13 @@ WORKDIR /build
 RUN wget -q -O opencv.zip https://github.com/opencv/opencv/archive/${OPENCV_VERSION}.zip && \
     unzip -q opencv.zip && mkdir -p /build/opencv-${OPENCV_VERSION}/build
 WORKDIR /build/opencv-${OPENCV_VERSION}/build
+# OpenCV 5 CUDA modules live in opencv_contrib (cudev). CALICO GPU gray uses
+# apriltag_cuda.cu instead; Ceres still builds with USE_CUDA below.
 RUN cmake -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=/usr/local \
-    -DBUILD_LIST=core,imgproc,imgcodecs,objdetect,calib3d,calib,geometry,highgui,videoio,cudev,cudaarithm,cudaimgproc \
-    -DWITH_CUDA=ON -DWITH_CUDNN=OFF -DCUDA_FAST_MATH=ON \
-    -DCUDA_ARCH_BIN=7.5 -DCUDA_ARCH_PTX= \
+    -DBUILD_LIST=core,imgproc,imgcodecs,objdetect,calib3d,calib,geometry,highgui,videoio \
+    -DWITH_CUDA=OFF \
     -DBUILD_TESTS=OFF -DBUILD_PERF_TESTS=OFF -DBUILD_EXAMPLES=OFF \
     /build/opencv-${OPENCV_VERSION} && ninja install && ldconfig
 

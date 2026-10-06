@@ -14,8 +14,14 @@
 // used 11/27
 Scalar PatternsCreated::Color(int index){
 
-    if (index >= int(display_colors.size()) ){
-        index = display_colors.size() % index;
+    if (display_colors.empty()) {
+        return Scalar(255, 0, 255);
+    }
+    if (index < 0 || index >= int(display_colors.size()) ){
+        index = index % int(display_colors.size());
+        if (index < 0) {
+            index += int(display_colors.size());
+        }
     }
     return Scalar(display_colors[index][0], display_colors[index][1],display_colors[index][2]);
 }
@@ -34,13 +40,7 @@ void PatternsCreated::ConstructAprilTagVersion(const string& read_dir, const str
     // read from yaml., no generate.
     string spec_file_path = read_dir + "/network_specification_file.yaml";
     bool valid = readAprilTagSpecificationFile(spec_file_path, pp);
-
-    if (pp.numberBoards > 1){
-        cout << "Note: at this time, the code is only implemented for 1 AprilTag board at a time for comparison to Kalibr." << endl;
-        cout << "your network_specification_file.yaml has " << pp.numberBoards << endl;
-        cout << "Quitting." << endl;
-        exit(1);
-    }
+    pp.april_family = NormalizeAprilFamily(pp.april_family);
 
     string filename_write = write_dir + "network_specification_file.yaml";
 
@@ -50,6 +50,9 @@ void PatternsCreated::ConstructAprilTagVersion(const string& read_dir, const str
         cout << "Parameter read did not work. " << spec_file_path << endl;
         exit(1);
     }
+
+    cout << "AprilTag grid: " << pp.squaresX << " x " << pp.squaresY
+         << " tags, " << pp.numberBoards << " board(s), family " << pp.april_family << endl;
 
     Size imageSize;
     int margins = pp.margins;
@@ -70,32 +73,10 @@ void PatternsCreated::ConstructAprilTagVersion(const string& read_dir, const str
 
     ofstream out;
 
-    string command;
-
     pp.ATObject.setTagCodes(pp.april_family);
     pp.ATObject.setup();
 
-    // Initialize tag detector with options
-    apriltag_family_t *tf = NULL;
-    vector<string> tag_string{"tag36h11", "tag25h9", "tag16h5" };
-    vector<std::function<apriltag_family_t *()> > tag_create_functions{tag36h11_create, tag25h9_create, tag16h5_create};
-
-    vector<std::function<void(apriltag_family_t *)> > tag_destroy_functions{tag36h11_destroy, tag25h9_destroy, tag16h5_destroy};
-
-    int tag_index = -1;
-    int number_types = int(tag_string.size());
-
-    for (int i = 0; i < number_types; i++){
-        if (pp.april_family.compare(tag_string[i]) == 0){
-            tag_index = i;
-            tf = tag_create_functions[tag_index]();
-            i = number_types; // exit the loop
-        }
-    }
-
-    if (tag_index == -1){
-        cout << "not able to generate this tag family at the moment." << endl;
-    }
+    apriltag_family_t *tf = pp.ATObject.m_apriltag_lib_tag_family;
 
     int total_corners = 0;
 
@@ -133,30 +114,22 @@ void PatternsCreated::ConstructAprilTagVersion(const string& read_dir, const str
         for (int y = 0; y < pp.squaresY; y++){
             for (int x = 0; x < pp.squaresX; x++){
 
-                Mat aprils = apriltag_to_image_local_black_border(tf, count);
-
-                // michael kaess' lib needs a black border for detection.
-
-                string filename0 = "raw.png";
-                string filename1 = "larger.png";
-
-                imwrite(filename0.c_str(), aprils);
-
-                string command = "convert " + filename0 + " -sample "
-                        + ToString<int>(pp.squareLength)+"x"+ ToString<int>(pp.squareLength)+ " " + filename1;
-                int conv = system(command.c_str());
-
-                markerImg = imread(filename1.c_str(), IMREAD_GRAYSCALE);
-
-                command  = "convert " + filename1 + " -border 10x10 " + filename1;
-
-                conv =system(command.c_str());
+                Mat markerImg = RenderAprilTagMarker(pp.april_family, count, pp.squareLength, tf);
+                if (markerImg.empty()) {
+                    cout << "Could not render AprilTag id " << count << " for family "
+                         << pp.april_family << endl;
+                    exit(1);
+                }
+                if (markerImg.size() != Size(pp.squareLength, pp.squareLength)) {
+                    Mat resized;
+                    resize(markerImg, resized, Size(pp.squareLength, pp.squareLength), 0, 0, INTER_NEAREST);
+                    markerImg = resized;
+                }
 
                 x0 = start_x_coordinate + x*(pp.squareLength + pp.tagSpace);
                 y0 = start_y_coordinate - y*(pp.squareLength + pp.tagSpace);
 
                 Rect R = Rect(x0, y0, pp.squareLength, pp.squareLength);
-
                 markerImg.copyTo(april_images[i](R));
 
                 count++;
@@ -176,7 +149,8 @@ void PatternsCreated::ConstructAprilTagVersion(const string& read_dir, const str
         cout << "Before detections " << i << endl;
 
 
-        vector<AprilTags::TagDetection> detections = pp.ATObject.m_tagDetector->extractTags(april_images[i]);
+        vector<AprilTags::TagDetection> detections;
+        DetectAprilTagGrid(april_images[i], pp.april_family, pp.ATObject.m_tagDetector, detections);
 
         // print out each detection
         cout << detections.size() << " tags detected:" << endl;
@@ -211,87 +185,51 @@ void PatternsCreated::ConstructAprilTagVersion(const string& read_dir, const str
 
     }
 
-    tag_destroy_functions[tag_index](tf);
-    tf = 0;
-
-
     number_total_markers = pp.squaresX * pp.squaresY * pp.numberBoards;
 
     // so for april versus aruco these mean different things.
     number_total_squares = number_total_markers;
 
 
-    for (int i = 0; i < pp.numberBoards; i++){
-
-        if (!generate_only){
-            filename = read_dir + "pattern_square_mm" + ToString<int>(i) + ".txt";
-
+    if (!generate_only) {
+        for (int b = 0; b < pp.numberBoards; b++) {
+            filename = read_dir + "pattern_square_mm" + ToString<int>(b) + ".txt";
             returnString = FindValueOfFieldInFile(filename, "squareLength_mm", false, true);
             pp.squareLength_mm = FromString<float>(returnString);
-
-            double margin_ratio = double(pp.tagSpace)/double(pp.squareLength);
-            pp.tagSpace_mm = pp.squareLength_mm*margin_ratio;
-
-            filename_write = write_dir + "pattern_square_mm" + ToString<int>(i) + ".txt";
-
+            double margin_ratio = double(pp.tagSpace) / double(pp.squareLength);
+            pp.tagSpace_mm = pp.squareLength_mm * margin_ratio;
+            filename_write = write_dir + "pattern_square_mm" + ToString<int>(b) + ".txt";
             CopyFile(filename, filename_write);
+        }
 
-            three_d_points = vector< cv::Point3f >(pp.numberBoards*number_corners_per_pattern, cv::Point3f());
-            int sm = 0;
-            for (int i = 0, sc = 0; i < pp.numberBoards; i++){
+        three_d_points = vector<cv::Point3f>(pp.numberBoards * number_corners_per_pattern, cv::Point3f());
+        int sm = 0;
+        int sc = 0;
+        const float pitch = pp.squareLength_mm + pp.tagSpace_mm;
+        for (int b = 0; b < pp.numberBoards; b++) {
+            vector<int> current_index(pp.squaresX * pp.squaresY, 0);
+            for (int m = 0; m < pp.squaresX * pp.squaresY; m++, sc++) {
+                current_index[m] = sc;
+            }
+            pattern_id_marker_indexes_to_vector.push_back(current_index);
 
-                // we create map from pattern, # of marker relative to the pattern, to index of the marker in the full vector.
-                // this may not be necessary.
-                vector<int> current_index(pp.squaresX*pp.squaresY, 0);
-
-                for (int m = 0; m < pp.squaresX*pp.squaresY; m++, sc++){
-                    current_index[m] = sc;
+            for (int r = 0; r < pp.squaresY; r++) {
+                for (int c = 0; c < pp.squaresX; c++) {
+                    three_d_points[sm++] = Point3f(pitch * float(c), pitch * float(r), 0);
+                    three_d_points[sm++] = Point3f(pitch * float(c) + pp.squareLength_mm, pitch * float(r), 0);
                 }
-
-                pattern_id_marker_indexes_to_vector.push_back(current_index);
-
-
-                for (int r = 0; r < pp.squaresY; r++){
-                    for (int c = 0; c < pp.squaresX; c++){
-
-                        //ccw from bottom left.
-                        // index 0
-                        Point3f p((pp.squareLength_mm+pp.tagSpace_mm)*float(c), float(r)*(pp.squareLength_mm+pp.tagSpace_mm), 0);
-                        three_d_points[sm] = p;
-                        sm++;
-
-                        // index 1, right edhe of the marker
-                        p = Point3f((pp.squareLength_mm+pp.tagSpace_mm)*float(c) + pp.squareLength, float(r)*(pp.squareLength_mm+pp.tagSpace_mm), 0);
-                        three_d_points[sm] = p;
-                        sm++;
-                    }
-
-                    for (int c = 0; c < pp.squaresX; c++){
-
-                        // next row.
-                        // index 0
-                        Point3f p((pp.squareLength_mm+pp.tagSpace_mm)*float(c), float(r)*(pp.squareLength_mm+pp.tagSpace_mm) + pp.squareLength_mm, 0);
-                        three_d_points[sm] = p;
-                        sm++;
-
-                        // index 1, right edge of the marker
-                        p = Point3f((pp.squareLength_mm+pp.tagSpace_mm)*float(c) + pp.squareLength, float(r)*(pp.squareLength_mm+pp.tagSpace_mm) + + pp.squareLength_mm, 0);
-                        three_d_points[sm] = p;
-                        sm++;
-
-                    }
+                for (int c = 0; c < pp.squaresX; c++) {
+                    three_d_points[sm++] = Point3f(pitch * float(c), pitch * float(r) + pp.squareLength_mm, 0);
+                    three_d_points[sm++] = Point3f(pitch * float(c) + pp.squareLength_mm,
+                            pitch * float(r) + pp.squareLength_mm, 0);
                 }
             }
-
-
-        }   else {
-            // create this template file to fill in.
-            filename_write = write_dir + "pattern_square_mm" + ToString<int>(i) + ".txt";
-
+        }
+    } else {
+        for (int b = 0; b < pp.numberBoards; b++) {
+            filename_write = write_dir + "pattern_square_mm" + ToString<int>(b) + ".txt";
             out.open(filename_write.c_str());
-
             out << "squareLength_mm  XX" << endl;
-
             out.close();
         }
     }

@@ -231,8 +231,10 @@ void CameraCali::FindCornersCharuco(const string& write_dir, bool write_internal
                         assert(charucoCorners.size() >= charucoIds.size());
 
                         if (charucoIds.size() > 0 && collinear_markers){
-                            for (int j = 0, jn = charucoIds.size(); j < jn; j++){
-                                circle(images.at(i), charucoCorners.at(j), 10, b_color, 2);
+                            if (!no_debug_images) {
+                                for (int j = 0, jn = charucoIds.size(); j < jn; j++){
+                                    circle(images.at(i), charucoCorners.at(j), 10, b_color, 2);
+                                }
                             }
 
                             boards_detected.at(i).at(p) = false;
@@ -255,7 +257,9 @@ void CameraCali::FindCornersCharuco(const string& write_dir, bool write_internal
                             }
 
                             /// corners (2d) are linked to the Ids
-                            cv::aruco::drawDetectedCornersCharuco(images.at(i), charucoCorners, charucoIds, b_color);
+                            if (!no_debug_images) {
+                                cv::aruco::drawDetectedCornersCharuco(images.at(i), charucoCorners, charucoIds, b_color);
+                            }
 
                             // the corner closest to a particular marker is added.
                             for (int j  = 0, jn = charucoIds.size(); j < jn; j++){
@@ -374,9 +378,8 @@ void CameraCali::FindCornersApril(const string& write_dir, bool write_internal_i
             calico_cuda::BgrToGray(images[i], grayCopy);
 
             vector<AprilTags::TagDetection> detections;
-            if (!(g_use_cuda && calico_cuda::DetectAprilTags(grayCopy, P_class->pp.april_family, detections))) {
-                detections = P_class->pp.ATObject.m_tagDetector->extractTags(grayCopy);
-            }
+            DetectAprilTagGrid(grayCopy, P_class->pp.april_family,
+                    P_class->pp.ATObject.m_tagDetector, detections);
 
             // print out each detection
             cout << detections.size() << " ID tags detected for image " << i << endl;
@@ -403,32 +406,42 @@ void CameraCali::FindCornersApril(const string& write_dir, bool write_internal_i
                 }
 
                 for (uint j=0, dn = detections.size(); j < dn; j++) {
-                    detections[j].draw(images[i]);
-
                     pattern_index = detections[j].id/number_markers_per_pattern;
-                    b_color = P_class->Color(pattern_index);
+                    if (pattern_index < 0 || pattern_index >= number_patterns) {
+                        continue;
+                    }
+                    if (!no_debug_images) {
+                        detections[j].draw(images[i]);
+                        b_color = P_class->Color(pattern_index);
+                    }
 
                     for (uint k = 0; k < 4; k++){
-
                         Point2f p(detections[j].p[k].first, detections[j].p[k].second);
 
                         int grid_index =  ConvertAprilMarkerIdIndexToGridPointIndex(P_class->pp.squaresX, detections[j].id,
                                 k, P_class->pattern_start_marker_indexes[pattern_index]);
-                        circle(images[i], p, 3, b_color, 2);
-                        putText(images[i], ToString<int>(grid_index), p, FONT_HERSHEY_SIMPLEX, 0.4, b_color,1);
+                        if (grid_index < 0 || grid_index >= number_corners_per) {
+                            continue;
+                        }
+                        if (!no_debug_images) {
+                            circle(images[i], p, 3, b_color, 2);
+                            putText(images[i], ToString<int>(grid_index), p, FONT_HERSHEY_SIMPLEX, 0.4, b_color,1);
+                        }
 
                         global_index = number_corners_per*pattern_index + grid_index;
+                        if (global_index < 0 ||
+                                global_index >= int(points_present[i].size())) {
+                            continue;
+                        }
                         points_present[i][global_index] = true;
                         two_d_point_coordinates_dense[i](global_index, 0) = detections[j].p[k].first;
                         two_d_point_coordinates_dense[i](global_index, 1) = detections[j].p[k].second;
-
                     }
                 }
             }
         }
 
-        if (i < number_external_images_max || write_internal_images){
-
+        if (!no_debug_images && (i < number_external_images_max || write_internal_images)){
             filename = write_dir + "initial_detect" + ToString<int>(i) + ".png";
             imwrite(filename.c_str(), images[i]);
         }
@@ -650,7 +663,10 @@ void CameraCali::CalibrateBasic(float initial_focal_px, int zero_tangent_dist,
         if (!LoadIntrinsics(ingest_intrinsics_file)) {
             exit(1);
         }
-        flags = flags | cv::CALIB_FIX_INTRINSIC;
+        // CALIB_FIX_INTRINSIC is a stereoCalibrate flag; pin K/dist explicitly.
+        flags = flags | cv::CALIB_FIX_PRINCIPAL_POINT | cv::CALIB_FIX_FOCAL_LENGTH
+                | cv::CALIB_FIX_ASPECT_RATIO | cv::CALIB_FIX_K1 | cv::CALIB_FIX_K2
+                | cv::CALIB_FIX_K3 | cv::CALIB_ZERO_TANGENT_DIST;
         cout << "Holding loaded intrinsics fixed while estimating board poses." << endl;
     }
 
@@ -697,8 +713,10 @@ void CameraCali::CalibrateBasic(float initial_focal_px, int zero_tangent_dist,
     int correct_image;
     int correct_pattern;
 
-    for (int i = 0; i < number_images; i++){
-        reproject_cam_cali_images.push_back(images[i].clone());
+    if (!no_debug_images) {
+        for (int i = 0; i < number_images; i++){
+            reproject_cam_cali_images.push_back(images[i].clone());
+        }
     }
 
 
@@ -717,8 +735,10 @@ void CameraCali::CalibrateBasic(float initial_focal_px, int zero_tangent_dist,
         correct_pattern = mapping_from_limited_to_full_patterns[m];
         reproj_error_per_board[correct_image][correct_pattern] = err*err;
 
-        for (int j = 0, jn = imagePoints2.size(); j < jn; j++){
-            line(reproject_cam_cali_images[correct_image], twod_points_wo_blanks[m][j],imagePoints2[j], Scalar(255, 0, 255), 2 );
+        if (!no_debug_images) {
+            for (int j = 0, jn = imagePoints2.size(); j < jn; j++){
+                line(reproject_cam_cali_images[correct_image], twod_points_wo_blanks[m][j],imagePoints2[j], Scalar(255, 0, 255), 2 );
+            }
         }
     }
 
@@ -757,32 +777,34 @@ void CameraCali::CalibrateBasic(float initial_focal_px, int zero_tangent_dist,
     cv::Mat view, rview, map1, map2;
     //	cv::Mat gray;
     string filename;
-    cv::initUndistortRectifyMap(cameraMatrix, distCoeffs, cv::Mat(),
-            cv::getOptimalNewCameraMatrix(cameraMatrix, distCoeffs, image_size, 1, image_size, 0),
-            image_size, CV_16SC2, map1, map2);
+    if (!no_debug_images) {
+        cv::initUndistortRectifyMap(cameraMatrix, distCoeffs, cv::Mat(),
+                cv::getOptimalNewCameraMatrix(cameraMatrix, distCoeffs, image_size, 1, image_size, 0),
+                image_size, CV_16SC2, map1, map2);
 
 
-    int number_to_write = 0;
+        int number_to_write = 0;
 
-    write_internal_images == false ? number_to_write = number_external_images_max: number_to_write = number_images;
+        write_internal_images == false ? number_to_write = number_external_images_max: number_to_write = number_images;
 
-    assert(int(reproject_cam_cali_images.size()) >= number_to_write);
+        assert(int(reproject_cam_cali_images.size()) >= number_to_write);
 
 #pragma omp parallel for private(filename)
-    for (int i = 0; i < number_to_write; i++){
-        Mat remapped;
+        for (int i = 0; i < number_to_write; i++){
+            Mat remapped;
 #pragma omp critical
-        {
-            if (i% 10 == 0){
-                cout << "Writing external " << i << endl;
+            {
+                if (i% 10 == 0){
+                    cout << "Writing external " << i << endl;
+                }
             }
-        }
-        cv::remap(reproject_cam_cali_images.at(i), remapped, map1, map2, cv::INTER_LINEAR);
+            cv::remap(reproject_cam_cali_images.at(i), remapped, map1, map2, cv::INTER_LINEAR);
 
-        filename  = write_dir + "/ext" + ToString<int>(i) + ".png";
+            filename  = write_dir + "/ext" + ToString<int>(i) + ".png";
 
-        {
-            cv::imwrite(filename.c_str(), remapped);
+            {
+                cv::imwrite(filename.c_str(), remapped);
+            }
         }
     }
 

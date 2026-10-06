@@ -1,0 +1,11 @@
+%YAML:1.0
+# AprilTag grid (Kalibr-style). Copy to <input>/network_specification_file.yaml
+# then: calico-dec2023 --april --create-patterns --input=... --output=...
+type: april
+squaresX: 6
+squaresY: 6
+squareLength: 80
+margins: 20
+tagSpace: 16
+numberBoards: 2
+april_family: tag36h11

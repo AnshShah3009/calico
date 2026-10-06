@@ -58,6 +58,7 @@ string DeviceName() {
 #endif
 }
 
+#ifdef WITH_CUDA
 static void LogGpuGrayOnce(const char* backend) {
     static bool logged = false;
     if (logged) {
@@ -66,6 +67,7 @@ static void LogGpuGrayOnce(const char* backend) {
     logged = true;
     cout << "GPU BGR→gray: " << backend << endl;
 }
+#endif
 
 void BgrToGray(const cv::Mat& bgr, cv::Mat& gray) {
     if (bgr.channels() != 3) {
@@ -108,7 +110,7 @@ static bool DetectWithCuAprilTags(const cv::Mat& gray, const string& family,
     if (!g_use_cuda || !GpuAvailable() || gray.empty()) {
         return false;
     }
-    if (family != "tag36h11") {
+    if (family != "tag36h11" && NormalizeAprilFamily(family) != "tag36h11") {
         cout << "cuAprilTags CUDA backend supports tag36h11; falling back to CPU for "
              << family << endl;
         return false;
