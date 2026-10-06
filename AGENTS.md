@@ -45,7 +45,7 @@ CMake tries **OpenCV 5**, then **4.7+**, then **4.3**. ArUco lives in `objdetect
 
 Pinned Docker images use **OpenCV 5.0.0**. On 4.7+/5, CALICO uses:
 
-- `CharucoBoard::setLegacyPattern(true)` so printed boards from OpenCV &lt; 4.6 still decode
+- `CharucoBoard::setLegacyPattern(true)` so printed boards from OpenCV < 4.6 still decode
 - `ArucoDetector::refineDetectedMarkers` per board (recovers markers from rejected quads)
 - `CharucoDetector::detectBoard` for chessboard-corner interpolation
 - ingested K/dist, when `--ingest-intrinsics` is set, for pose-reprojection interpolation (more accurate than homography)
@@ -124,6 +124,29 @@ CLI overrides config. Hyphenated and underscored keys both work.
 <input>/pattern_square_mm<N>.txt
 ```
 
-## No tests
+## Verification & 3D Visualization
 
-Still no unit tests. Verify with a Zenodo dataset: http://doi.org/10.5281/zenodo.3520866
+### Synthetic MuJoCo Ground-Truth Verification
+An end-to-end multi-camera testbench is located in `sim/verify_mujoco_april.py`. It renders a multi-board scene across 3 cameras in MuJoCo, executes CALICO via Docker (`calico-cpu` or `calico-cuda`), and checks recovered intrinsics and camera poses against analytical ground truth:
+
+```bash
+# CPU mode:
+MUJOCO_GL=osmesa python3 sim/verify_mujoco_april.py
+
+# CUDA mode:
+MUJOCO_GL=osmesa python3 sim/verify_mujoco_april.py --use-cuda
+```
+
+Verification thresholds: $f_x, f_y \le 1.0\text{ px}$, relative rotation $\le 0.5^\circ$, relative translation $\le 10\text{ mm}$, reprojection $\text{RMS} \le 1.5\text{ px}$.
+
+### Interactive 3D WebGL / HTML Visualizer
+Generate an interactive Three.js 3D report from any CALICO output directory containing `calibration.json`:
+
+```bash
+python3 tools/visualize_calibration.py <output_dir> -o <output_dir>/report_3d.html
+```
+
+Renders 3D camera frustums, optical centers, baseline distances, boards, and an interactive properties/reprojection panel.
+
+### Real-world datasets
+Verify real capture rigs with Zenodo datasets: http://doi.org/10.5281/zenodo.3520866

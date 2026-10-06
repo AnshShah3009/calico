@@ -396,9 +396,22 @@ def render_scene() -> tuple:
     return cams
 
 
+def clean_dir(p: Path) -> None:
+    if not p.exists():
+        return
+    try:
+        shutil.rmtree(p)
+    except PermissionError:
+        subprocess.run(
+            ["docker", "run", "--rm", "-v", f"{p.parent}:/target", "alpine:3.20", "rm", "-rf", f"/target/{p.name}"],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+
 def run_calico() -> None:
-    if OUT_CALI.exists():
-        shutil.rmtree(OUT_CALI)
+    clean_dir(OUT_CALI)
     OUT_CALI.mkdir(parents=True)
     service = "calico-cuda" if USE_CUDA else "calico-cpu"
     cmd = [
@@ -408,6 +421,7 @@ def run_calico() -> None:
         str(ROOT / "docker-compose.yml"),
         "run",
         "--rm",
+        f"--user={os.getuid()}:{os.getgid()}",
         "--no-deps",
         "-v",
         f"{OUT_IN}:/docker_dir/sim-in",
