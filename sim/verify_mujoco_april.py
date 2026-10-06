@@ -23,6 +23,7 @@ SIM_ROOT = Path.home() / "calico-mujoco-sim"
 OUT_IN = SIM_ROOT / "mujoco-april-in"
 OUT_CALI = SIM_ROOT / "mujoco-april-out-sep"
 PREVIEWS = SIM_ROOT / "preview"
+USE_CUDA = False
 
 # Match configs/april-grid.yaml + pattern_square_mm
 SQUARE_PX = 80
@@ -399,6 +400,7 @@ def run_calico() -> None:
     if OUT_CALI.exists():
         shutil.rmtree(OUT_CALI)
     OUT_CALI.mkdir(parents=True)
+    service = "calico-cuda" if USE_CUDA else "calico-cpu"
     cmd = [
         "docker",
         "compose",
@@ -415,7 +417,7 @@ def run_calico() -> None:
         f"{SIM_ROOT / 'intrinsics'}:/docker_dir/sim-k",
         "--entrypoint",
         "calico-dec2023",
-        "calico-cpu",
+        service,
         "--april",
         "--calibrate",
         "--input=/docker_dir/sim-in/",
@@ -429,6 +431,8 @@ def run_calico() -> None:
         "--summary",
         "--ingest-intrinsics=/docker_dir/sim-k/",
     ]
+    if USE_CUDA:
+        cmd.append("--use-cuda")
     print("Running:", " ".join(cmd), flush=True)
     r = subprocess.run(cmd, cwd=str(ROOT))
     if r.returncode != 0:
@@ -525,7 +529,11 @@ def compare() -> int:
 
 
 def main() -> int:
+    global OUT_CALI, USE_CUDA
     preview_only = "--preview-only" in sys.argv
+    USE_CUDA = "--use-cuda" in sys.argv or "--cuda" in sys.argv
+    if USE_CUDA:
+        OUT_CALI = SIM_ROOT / "mujoco-april-out-cuda"
     print("MuJoCo", mujoco.__version__, "GL", os.environ.get("MUJOCO_GL"))
     print("Rendering AprilTag scene...")
     render_scene()

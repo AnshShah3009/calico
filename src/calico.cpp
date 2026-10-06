@@ -369,6 +369,8 @@ int main(int argc, char **argv){
     int cli_detection_summary = detection_summary;
     int cli_per_camera_mse = per_camera_mse;
     int cli_min_boards = min_boards;
+    int cli_use_cuda = use_cuda;
+    string cli_ingest_intrinsics_dir = ingest_intrinsics_dir;
     string cli_camera_color_str = camera_color_str;
     string cli_pattern_color_str = pattern_color_str;
     string cli_camera_names_str = camera_names_str;
@@ -485,6 +487,8 @@ int main(int argc, char **argv){
     if (cli_initial_focal_px >= 0) initial_focal_px = cli_initial_focal_px;
     if (cli_percentage_global_alg != 0.2) percentage_global_alg = cli_percentage_global_alg;
     if (cli_percentage_global_rp != 0.5) percentage_global_rp = cli_percentage_global_rp;
+    if (cli_use_cuda) use_cuda = 1;
+    if (!cli_ingest_intrinsics_dir.empty()) ingest_intrinsics_dir = cli_ingest_intrinsics_dir;
     omp_set_num_threads(number_threads);
 
     // Build CalicoOptions
@@ -1097,6 +1101,28 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
         EnsureDirHasTrailingBackslash(resume_path);
         if (MC.LoadCheckpoint(resume_path, resume_stage, resume_i)) {
             cout << "Resuming Stage 4 from variable index " << resume_i << endl;
+            // Checkpoint restores poses only; rebuild the Ceres algebraic residuals for
+            // every variable that was already solved so resume matches a continuous run.
+            vector<char> already(MC.NumberVariables(), 0);
+            for (int v : variable_order) {
+                if (v >= 0 && v < MC.NumberVariables()) {
+                    already[v] = 1;
+                }
+            }
+            int newly = 0;
+            for (int v = 0; v < MC.NumberVariables(); v++) {
+                if (MC.V_has_initialization[v] && !already[v]) {
+                    variable_order.push_back(v);
+                    newly++;
+                }
+            }
+            if (newly > 0) {
+                num_equations = CPC.AddToProblemAlgebraicError(MC, variable_order, equation_order,
+                        out, newly);
+                equations_per_iter.push_back(num_equations);
+                CPC.SolveWriteBackToMCAlgebraicError(MC, ceres_out, number_iters_local, true);
+            }
+            var_accumulator = 0;
         } else {
             resume_i = 0;
         }

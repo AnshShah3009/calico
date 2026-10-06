@@ -192,21 +192,29 @@ void PatternsCreated::ConstructAprilTagVersion(const string& read_dir, const str
 
 
     if (!generate_only) {
+        vector<float> board_square_mm(pp.numberBoards, 0.f);
+        vector<float> board_tagspace_mm(pp.numberBoards, 0.f);
         for (int b = 0; b < pp.numberBoards; b++) {
             filename = read_dir + "pattern_square_mm" + ToString<int>(b) + ".txt";
             returnString = FindValueOfFieldInFile(filename, "squareLength_mm", false, true);
-            pp.squareLength_mm = FromString<float>(returnString);
+            board_square_mm[b] = FromString<float>(returnString);
             double margin_ratio = double(pp.tagSpace) / double(pp.squareLength);
-            pp.tagSpace_mm = pp.squareLength_mm * margin_ratio;
+            board_tagspace_mm[b] = board_square_mm[b] * margin_ratio;
             filename_write = write_dir + "pattern_square_mm" + ToString<int>(b) + ".txt";
             CopyFile(filename, filename_write);
+        }
+        // Keep pp.* as board 0 for any callers that still read a single size.
+        if (pp.numberBoards > 0) {
+            pp.squareLength_mm = board_square_mm[0];
+            pp.tagSpace_mm = board_tagspace_mm[0];
         }
 
         three_d_points = vector<cv::Point3f>(pp.numberBoards * number_corners_per_pattern, cv::Point3f());
         int sm = 0;
         int sc = 0;
-        const float pitch = pp.squareLength_mm + pp.tagSpace_mm;
         for (int b = 0; b < pp.numberBoards; b++) {
+            const float square_mm = board_square_mm[b];
+            const float pitch = square_mm + board_tagspace_mm[b];
             vector<int> current_index(pp.squaresX * pp.squaresY, 0);
             for (int m = 0; m < pp.squaresX * pp.squaresY; m++, sc++) {
                 current_index[m] = sc;
@@ -216,12 +224,12 @@ void PatternsCreated::ConstructAprilTagVersion(const string& read_dir, const str
             for (int r = 0; r < pp.squaresY; r++) {
                 for (int c = 0; c < pp.squaresX; c++) {
                     three_d_points[sm++] = Point3f(pitch * float(c), pitch * float(r), 0);
-                    three_d_points[sm++] = Point3f(pitch * float(c) + pp.squareLength_mm, pitch * float(r), 0);
+                    three_d_points[sm++] = Point3f(pitch * float(c) + square_mm, pitch * float(r), 0);
                 }
                 for (int c = 0; c < pp.squaresX; c++) {
-                    three_d_points[sm++] = Point3f(pitch * float(c), pitch * float(r) + pp.squareLength_mm, 0);
-                    three_d_points[sm++] = Point3f(pitch * float(c) + pp.squareLength_mm,
-                            pitch * float(r) + pp.squareLength_mm, 0);
+                    three_d_points[sm++] = Point3f(pitch * float(c), pitch * float(r) + square_mm, 0);
+                    three_d_points[sm++] = Point3f(pitch * float(c) + square_mm,
+                            pitch * float(r) + square_mm, 0);
                 }
             }
         }

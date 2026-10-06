@@ -664,9 +664,10 @@ void CameraCali::CalibrateBasic(float initial_focal_px, int zero_tangent_dist,
             exit(1);
         }
         // CALIB_FIX_INTRINSIC is a stereoCalibrate flag; pin K/dist explicitly.
+        // Use FIX_TANGENT_DIST (keep p1/p2) — ZERO_TANGENT_DIST would zero ingested tangentials.
         flags = flags | cv::CALIB_FIX_PRINCIPAL_POINT | cv::CALIB_FIX_FOCAL_LENGTH
                 | cv::CALIB_FIX_ASPECT_RATIO | cv::CALIB_FIX_K1 | cv::CALIB_FIX_K2
-                | cv::CALIB_FIX_K3 | cv::CALIB_ZERO_TANGENT_DIST;
+                | cv::CALIB_FIX_K3 | cv::CALIB_FIX_TANGENT_DIST;
         cout << "Holding loaded intrinsics fixed while estimating board poses." << endl;
     }
 

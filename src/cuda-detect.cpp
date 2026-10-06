@@ -17,7 +17,7 @@
 int g_use_cuda = 0;
 
 #ifdef WITH_CUDA
-extern "C" void calico_cuda_bgr_to_gray(const unsigned char* bgr, unsigned char* gray,
+extern "C" int calico_cuda_bgr_to_gray(const unsigned char* bgr, unsigned char* gray,
         int width, int height);
 #endif
 
@@ -78,19 +78,25 @@ void BgrToGray(const cv::Mat& bgr, cv::Mat& gray) {
 #ifdef WITH_CUDA
     if (g_use_cuda && GpuAvailable()) {
 #ifdef HAVE_OPENCV_CUDAIMGPROC
-        cv::cuda::GpuMat d_bgr, d_gray;
-        d_bgr.upload(bgr);
-        cv::cuda::cvtColor(d_bgr, d_gray, cv::COLOR_BGR2GRAY);
-        d_gray.download(gray);
-        LogGpuGrayOnce("OpenCV cudaimgproc");
-        return;
+        try {
+            cv::cuda::GpuMat d_bgr, d_gray;
+            d_bgr.upload(bgr);
+            cv::cuda::cvtColor(d_bgr, d_gray, cv::COLOR_BGR2GRAY);
+            d_gray.download(gray);
+            LogGpuGrayOnce("OpenCV cudaimgproc");
+            return;
+        } catch (const cv::Exception&) {
+            // Fall through to CPU.
+        }
 #else
         cv::Mat bgr_c = bgr.isContinuous() ? bgr : bgr.clone();
         gray.create(bgr.rows, bgr.cols, CV_8UC1);
-        calico_cuda_bgr_to_gray(bgr_c.ptr<unsigned char>(), gray.ptr<unsigned char>(),
-                bgr.cols, bgr.rows);
-        LogGpuGrayOnce("calico CUDA kernel");
-        return;
+        if (calico_cuda_bgr_to_gray(bgr_c.ptr<unsigned char>(), gray.ptr<unsigned char>(),
+                bgr.cols, bgr.rows) == 0) {
+            LogGpuGrayOnce("calico CUDA kernel");
+            return;
+        }
+        gray.release();
 #endif
     }
 #endif
@@ -128,17 +134,31 @@ static bool DetectWithCuAprilTags(const cv::Mat& gray, const string& family,
     cuAprilTagsImageInput_t input;
     memset(&input, 0, sizeof(input));
 
-#ifdef HAVE_OPENCV_CUDAIMGPROC
     cv::Mat contiguous = gray.isContinuous() ? gray : gray.clone();
-    cv::cuda::GpuMat d_gray;
-    d_gray.upload(contiguous);
     input.width = static_cast<uint32_t>(contiguous.cols);
     input.height = static_cast<uint32_t>(contiguous.rows);
+    int rc = -1;
+#ifdef HAVE_OPENCV_CUDAIMGPROC
+    cv::cuda::GpuMat d_gray;
+    d_gray.upload(contiguous);
     input.pitch = static_cast<uint32_t>(d_gray.step);
     input.dev_p016 = reinterpret_cast<uchar2*>(d_gray.ptr());
-    int rc = cuAprilTagsDetect(handle, &input, tags.data(), &num_tags, max_tags, nullptr);
+    rc = cuAprilTagsDetect(handle, &input, tags.data(), &num_tags, max_tags, nullptr);
+#elif defined(WITH_CUDA)
+    // No OpenCV cudaimgproc: upload contiguous gray with the CUDA runtime.
+    unsigned char* d_gray = nullptr;
+    const size_t nbytes = static_cast<size_t>(contiguous.rows) * static_cast<size_t>(contiguous.cols);
+    if (cudaMalloc(&d_gray, nbytes) == cudaSuccess &&
+            cudaMemcpy(d_gray, contiguous.ptr<unsigned char>(), nbytes,
+                    cudaMemcpyHostToDevice) == cudaSuccess) {
+        input.pitch = static_cast<uint32_t>(contiguous.cols);
+        input.dev_p016 = reinterpret_cast<uchar2*>(d_gray);
+        rc = cuAprilTagsDetect(handle, &input, tags.data(), &num_tags, max_tags, nullptr);
+    }
+    if (d_gray != nullptr) {
+        cudaFree(d_gray);
+    }
 #else
-    int rc = -1;
     (void)input;
 #endif
     cuAprilTagsDestroy(handle);

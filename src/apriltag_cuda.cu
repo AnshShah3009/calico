@@ -9,18 +9,37 @@ __global__ void k_bgr_to_gray(const unsigned char* bgr, unsigned char* gray, int
     gray[i] = static_cast<unsigned char>((p[0] * 29 + p[1] * 150 + p[2] * 77) >> 8);
 }
 
-extern "C" void calico_cuda_bgr_to_gray(const unsigned char* bgr, unsigned char* gray,
+// Returns 0 on success, non-zero on CUDA failure (caller should fall back to CPU).
+extern "C" int calico_cuda_bgr_to_gray(const unsigned char* bgr, unsigned char* gray,
         int width, int height) {
+    if (bgr == nullptr || gray == nullptr || width <= 0 || height <= 0) {
+        return -1;
+    }
     const int n = width * height;
     unsigned char* d_bgr = nullptr;
     unsigned char* d_gray = nullptr;
-    cudaMalloc(&d_bgr, static_cast<size_t>(n) * 3);
-    cudaMalloc(&d_gray, static_cast<size_t>(n));
-    cudaMemcpy(d_bgr, bgr, static_cast<size_t>(n) * 3, cudaMemcpyHostToDevice);
+    if (cudaMalloc(&d_bgr, static_cast<size_t>(n) * 3) != cudaSuccess) {
+        return -1;
+    }
+    if (cudaMalloc(&d_gray, static_cast<size_t>(n)) != cudaSuccess) {
+        cudaFree(d_bgr);
+        return -1;
+    }
+    if (cudaMemcpy(d_bgr, bgr, static_cast<size_t>(n) * 3, cudaMemcpyHostToDevice) != cudaSuccess) {
+        cudaFree(d_bgr);
+        cudaFree(d_gray);
+        return -1;
+    }
     const int threads = 256;
     const int blocks = (n + threads - 1) / threads;
     k_bgr_to_gray<<<blocks, threads>>>(d_bgr, d_gray, n);
-    cudaMemcpy(gray, d_gray, static_cast<size_t>(n), cudaMemcpyDeviceToHost);
+    if (cudaGetLastError() != cudaSuccess ||
+            cudaMemcpy(gray, d_gray, static_cast<size_t>(n), cudaMemcpyDeviceToHost) != cudaSuccess) {
+        cudaFree(d_bgr);
+        cudaFree(d_gray);
+        return -1;
+    }
     cudaFree(d_bgr);
     cudaFree(d_gray);
+    return 0;
 }
