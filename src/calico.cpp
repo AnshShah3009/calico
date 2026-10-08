@@ -80,6 +80,8 @@ int main(int argc, char **argv){
     int per_camera_mse = 0;
     int use_cuda = 0;
     string ingest_intrinsics_dir = "";
+    string loss_type = "trivial";
+    float loss_scale = 1.0f;
 
     if (argc == 1){
         print_help = 1;
@@ -139,6 +141,8 @@ int main(int argc, char **argv){
                 {"min-boards", required_argument, 0, 'w'},
                 {"use-cuda", no_argument, &use_cuda, 1},
                 {"ingest-intrinsics", required_argument, 0, 'x'},
+                {"loss", required_argument, 0, 'y'},
+                {"loss-scale", required_argument, 0, 'z'},
         };
 
         if (argc == 1){ print_help = 1; }
@@ -224,6 +228,8 @@ int main(int argc, char **argv){
             cout << std::left << setw(30) << "--min-boards=[INT] " << "Auto-exclude cameras detecting fewer than N boards." << endl;
             cout << std::left << setw(30) << "--use-cuda " << "GPU preprocess, optional cuAprilTags, Ceres CUDA if built WITH_CUDA." << endl;
             cout << std::left << setw(30) << "--ingest-intrinsics=[DIR] " << "Load per-camera cali_results.txt and keep K/dist fixed." << endl;
+            cout << std::left << setw(30) << "--loss=[STR] " << "Robust loss: trivial (default), huber, or cauchy." << endl;
+            cout << std::left << setw(30) << "--loss-scale=[FLOAT] " << "Loss scale parameter in pixels (default: 1.0)." << endl;
 
             cout << "All other arguments are ignored." << endl;
             cout << endl << endl;
@@ -234,7 +240,7 @@ int main(int argc, char **argv){
         int option_index = 0;
         int opt_argument;
 
-        opt_argument = getopt_long (argc, argv, "abcdefghijklmnopqrstuvwx",
+        opt_argument = getopt_long (argc, argv, "abcdefghijklmnopqrstuvwxyz",
                 long_options, &option_index);
 
         if (opt_argument == -1)
@@ -342,6 +348,12 @@ int main(int argc, char **argv){
         case 'x':
             ingest_intrinsics_dir = optarg;
             break;
+        case 'y':
+            loss_type = optarg;
+            break;
+        case 'z':
+            loss_scale = FromString<float>(optarg);
+            break;
 
         default:{
             cout << "Argument not found " << optarg << endl;
@@ -371,6 +383,8 @@ int main(int argc, char **argv){
     int cli_min_boards = min_boards;
     int cli_use_cuda = use_cuda;
     string cli_ingest_intrinsics_dir = ingest_intrinsics_dir;
+    string cli_loss_type = loss_type;
+    float cli_loss_scale = loss_scale;
     string cli_camera_color_str = camera_color_str;
     string cli_pattern_color_str = pattern_color_str;
     string cli_camera_names_str = camera_names_str;
@@ -447,6 +461,10 @@ int main(int argc, char **argv){
                 } else if (key == "no-debug-images" || key == "no_debug_images") { if (ival) no_debug_images = 1;
                 } else if (key == "detection-summary" || key == "detection_summary") { if (ival) detection_summary = 1;
                 } else if (key == "per-camera-mse" || key == "per_camera_mse") { if (ival) per_camera_mse = 1;
+                } else if (key == "loss") {
+                    if (!val_str.empty()) loss_type = val_str;
+                } else if (key == "loss-scale" || key == "loss_scale") {
+                    if (fval > 0) loss_scale = fval;
                 } else if (key == "focus-camera" || key == "focus_camera") {
                     if (!val_str.empty()) focus_camera_str = val_str;
                 } else if (key == "min-boards" || key == "min_boards") { if (ival > 0) min_boards = ival;
@@ -489,6 +507,8 @@ int main(int argc, char **argv){
     if (cli_percentage_global_rp != 0.5) percentage_global_rp = cli_percentage_global_rp;
     if (cli_use_cuda) use_cuda = 1;
     if (!cli_ingest_intrinsics_dir.empty()) ingest_intrinsics_dir = cli_ingest_intrinsics_dir;
+    if (cli_loss_type != "trivial") loss_type = cli_loss_type;
+    if (cli_loss_scale != 1.0f) loss_scale = cli_loss_scale;
     omp_set_num_threads(number_threads);
 
     // Build CalicoOptions
@@ -518,6 +538,8 @@ int main(int argc, char **argv){
     if (!opts.ingest_intrinsics_dir.empty()) {
         EnsureDirHasTrailingBackslash(opts.ingest_intrinsics_dir);
     }
+    opts.loss_type = loss_type;
+    opts.loss_scale = loss_scale;
 
     g_num_threads = number_threads;
     g_use_cuda = opts.use_cuda ? 1 : 0;
@@ -1087,6 +1109,11 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
     if (mod_solve == 0){mod_solve = 1;}
 
     CeresProblemClass CPC(Cali_Quaternion, MC, ceres_out);
+    CPC.loss_type = options.loss_type;
+    CPC.loss_scale = options.loss_scale;
+    if (CPC.loss_type != "trivial") {
+        cout << "Using robust loss for reprojection error: " << CPC.loss_type << " (scale " << CPC.loss_scale << ")" << endl;
+    }
 
     if (variable_order.size() > 0){
         num_equations = CPC.AddToProblemAlgebraicError(MC, variable_order, equation_order, out, variable_order.size());
@@ -1095,39 +1122,51 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
 
     auto stage4_start = std::chrono::high_resolution_clock::now();
     int resume_i = 0;
+    int resume_stage = 0;
+    int stage5_resume_eq = 0;
     if (!options.resume_dir.empty()) {
-        int resume_stage = 0;
         string resume_path = options.resume_dir;
         EnsureDirHasTrailingBackslash(resume_path);
         if (MC.LoadCheckpoint(resume_path, resume_stage, resume_i)) {
-            cout << "Resuming Stage 4 from variable index " << resume_i << endl;
-            // Checkpoint restores poses only; rebuild the Ceres algebraic residuals for
-            // every variable that was already solved so resume matches a continuous run.
-            vector<char> already(MC.NumberVariables(), 0);
-            for (int v : variable_order) {
-                if (v >= 0 && v < MC.NumberVariables()) {
-                    already[v] = 1;
+            if (resume_stage >= 5) {
+                stage5_resume_eq = resume_i;
+                cout << "Resuming Stage 5 from equation index " << stage5_resume_eq << endl;
+                has_some_to_solve = false;
+                for (int v = 0; v < MC.NumberVariables(); v++) {
+                    if (MC.V_has_initialization[v]) {
+                        variable_order.push_back(v);
+                    }
                 }
-            }
-            int newly = 0;
-            for (int v = 0; v < MC.NumberVariables(); v++) {
-                if (MC.V_has_initialization[v] && !already[v]) {
-                    variable_order.push_back(v);
-                    newly++;
+            } else {
+                cout << "Resuming Stage 4 from variable index " << resume_i << endl;
+                // Checkpoint restores poses only; rebuild the Ceres algebraic residuals for
+                // every variable that was already solved so resume matches a continuous run.
+                vector<char> already(MC.NumberVariables(), 0);
+                for (int v : variable_order) {
+                    if (v >= 0 && v < MC.NumberVariables()) {
+                        already[v] = 1;
+                    }
                 }
+                int newly = 0;
+                for (int v = 0; v < MC.NumberVariables(); v++) {
+                    if (MC.V_has_initialization[v] && !already[v]) {
+                        variable_order.push_back(v);
+                        newly++;
+                    }
+                }
+                if (newly > 0) {
+                    num_equations = CPC.AddToProblemAlgebraicError(MC, variable_order, equation_order,
+                            out, newly);
+                    equations_per_iter.push_back(num_equations);
+                    CPC.SolveWriteBackToMCAlgebraicError(MC, ceres_out, number_iters_local, true);
+                }
+                var_accumulator = 0;
             }
-            if (newly > 0) {
-                num_equations = CPC.AddToProblemAlgebraicError(MC, variable_order, equation_order,
-                        out, newly);
-                equations_per_iter.push_back(num_equations);
-                CPC.SolveWriteBackToMCAlgebraicError(MC, ceres_out, number_iters_local, true);
-            }
-            var_accumulator = 0;
         } else {
             resume_i = 0;
         }
     }
-    for (int i = resume_i, vn = MC.NumberVariables(); i < vn && has_some_to_solve == true; i++){
+    for (int i = (resume_stage < 5 ? resume_i : MC.NumberVariables()), vn = MC.NumberVariables(); i < vn && has_some_to_solve == true; i++){
 
         if (show_progress && (i % 10 == 0 || i == vn - 1 || i == 0)) {
             auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
@@ -1176,14 +1215,16 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
         cout << endl;
     }
 
-    if (options.checkpoint_enabled) {
-        MC.WriteCheckpoint(output_dir, 4, MC.NumberVariables());
+    if (resume_stage < 5) {
+        if (options.checkpoint_enabled) {
+            MC.WriteCheckpoint(output_dir, 4, MC.NumberVariables());
+        }
+
+        num_equations = CPC.AddToProblemAlgebraicError(MC, variable_order, equation_order, out, var_accumulator);
+        equations_per_iter.push_back(num_equations);
+
+        CPC.SolveWriteBackToMCAlgebraicError(MC, ceres_out, number_iters_local, true);
     }
-
-    num_equations = CPC.AddToProblemAlgebraicError(MC, variable_order, equation_order, out, var_accumulator);
-    equations_per_iter.push_back(num_equations);
-
-    CPC.SolveWriteBackToMCAlgebraicError(MC, ceres_out, number_iters_local, true);
 
     cout << "break in between algebraic error and reprojection ... " << endl;
 
@@ -1219,12 +1260,25 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
 
         end_index = min(start_index + number_equations_before_solve, number_equations);
 
+        if (start_index < stage5_resume_eq) {
+            CPC.AddEqsToProblemReprojectionError(MC, CCV, camera_params, start_index, end_index, equation_order);
+            continue;
+        }
+
         cout << "Adding equations  " << start_index << ", " << end_index << endl;
 
         CPC.AddEqsToProblemReprojectionError(MC, CCV, camera_params, start_index, end_index, equation_order);
 
         CPC.SolveWriteBackToMCRP(MC, ceres_out, number_iters_rp, variable_order, true);
 
+        if (options.checkpoint_enabled) {
+            MC.WriteCheckpoint(output_dir, 5, end_index);
+        }
+
+    }
+
+    if (options.checkpoint_enabled) {
+        MC.WriteCheckpoint(output_dir, 5, number_equations);
     }
 
     if (show_progress) {

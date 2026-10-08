@@ -1,10 +1,10 @@
-name: CALICO CI
+name: calico-ci
 
 on:
   push:
-    branches: [ main, "feat/**" ]
+    branches: [ "main", "feat/*", "fix/*" ]
   pull_request:
-    branches: [ main, "feat/**" ]
+    branches: [ "main" ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -12,53 +12,36 @@ concurrency:
 
 jobs:
   python-tools-check:
-    name: Verify Python Tools & Scripts
+    name: Verify Python Tools & Exporters
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
+      - name: Install Test Dependencies
+        run: |
+          pip install numpy opencv-python-headless
+
       - name: Lint and Compile Check
         run: |
           python -m py_compile tools/visualize_calibration.py
+          python -m py_compile tools/export_calibration.py
+          python -m py_compile tools/ingest_video.py
+          python -m py_compile tools/test_tools.py
           python -m py_compile sim/verify_mujoco_april.py
+          python -m py_compile sim/verify_mujoco_charuco.py
 
-      - name: Test 3D Visualizer on Sample Data
+      - name: Run Python Tools Unit Test Suite
         run: |
-          mkdir -p /tmp/mock_cali/data/cam0
-          cat << 'EOF' > /tmp/mock_cali/calibration.json
-          {
-            "tool": "calico-dec2023",
-            "num_cameras": 2,
-            "duration_sec": 1,
-            "opencv": "5.0.0",
-            "cuda": false,
-            "pattern": "april",
-            "cameras": [
-              {
-                "name": "cam0",
-                "fx": 800.0, "fy": 800.0, "cx": 480.0, "cy": 360.0,
-                "T_world_camera": [[1,0,0,-100],[0,1,0,0],[0,0,1,500],[0,0,0,1]]
-              },
-              {
-                "name": "cam1",
-                "fx": 800.0, "fy": 800.0, "cx": 480.0, "cy": 360.0,
-                "T_world_camera": [[1,0,0,100],[0,1,0,0],[0,0,1,500],[0,0,0,1]]
-              }
-            ],
-            "boards": [{"index": 0, "T_world_board": [[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]]}]
-          }
-          EOF
-          python3 tools/visualize_calibration.py /tmp/mock_cali -o /tmp/mock_cali/report.html
-          test -f /tmp/mock_cali/report.html
+          python3 tools/test_tools.py
 
   build-docker-cpu:
-    name: Build and Validate Docker CPU Image
+    name: Build & Verify Docker calico-cpu
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout Code
@@ -67,10 +50,10 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build CALICO CPU Image
+      - name: Build calico-cpu Image
         run: |
           docker compose build calico-cpu
 
-      - name: Validate calico-dec2023 Help CLI
+      - name: Verify CLI Help Output
         run: |
           docker compose run --rm calico-cpu --help

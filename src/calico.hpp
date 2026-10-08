@@ -30,6 +30,8 @@ struct CalicoOptions {
     vector<string> focus_cameras;
     bool use_cuda = false;
     string ingest_intrinsics_dir = "";
+    string loss_type = "trivial";
+    float loss_scale = 1.0f;
 };
 
 void PrintDetectionSummary(const vector<CameraCali*>& CCV,

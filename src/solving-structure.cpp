@@ -639,7 +639,7 @@ void CeresProblemClass::AddEqsToProblemReprojectionError(MCcali& MC, vector<Came
 
     for (int i = 0; i < number_case_0; i++){
         problemRP.AddResidualBlock(case_0_cost_functions[i],
-                NULL /* squared loss */,
+                CreateLoss(),
                 case_0_c[i],
                 case_0_p[i],
                 case_0_t[i]);
@@ -649,7 +649,7 @@ void CeresProblemClass::AddEqsToProblemReprojectionError(MCcali& MC, vector<Came
     cout << "add case 1s RP " << endl;
     for (int i = 0; i < number_case_1; i++){
         problemRP.AddResidualBlock(case_1_cost_functions[i],
-                NULL /* squared loss */,
+                CreateLoss(),
                 case_1_c[i],
                 case_1_t[i]);
     }
@@ -657,7 +657,7 @@ void CeresProblemClass::AddEqsToProblemReprojectionError(MCcali& MC, vector<Came
     cout << "add case 2s RP " << endl;
     for (int i = 0; i < number_case_2; i++){
         problemRP.AddResidualBlock(case_2_cost_functions[i],
-                NULL /* squared loss */,
+                CreateLoss(),
                 case_2_c[i],
                 case_2_p[i]);
     }
@@ -665,7 +665,7 @@ void CeresProblemClass::AddEqsToProblemReprojectionError(MCcali& MC, vector<Came
     cout << "add case 3s RP " << endl;
     for (int i = 0; i < number_case_3; i++){
         problemRP.AddResidualBlock(case_3_cost_functions[i],
-                NULL /* squared loss */,
+                CreateLoss(),
                 case_3_c[i]);
     }
 }

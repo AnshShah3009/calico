@@ -50,7 +50,7 @@ RUN cmake .. -DCMAKE_BUILD_TYPE=Release && make -j$(nproc) && make install && ld
 
 COPY src /calico/src
 WORKDIR /calico/build
-RUN cmake ../src -DCMAKE_BUILD_TYPE=Release -DENABLE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75 && make -j$(nproc)
+RUN cmake ../src -DCMAKE_BUILD_TYPE=Release -DENABLE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75 && make -j$(nproc) && ctest --output-on-failure
 
 FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 RUN apt-get update && apt-get install -y \
@@ -60,6 +60,7 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /usr/local /usr/local
 COPY --from=builder /calico/build/calico-dec2023 /usr/local/bin/calico-dec2023
 COPY --from=builder /calico/build/compute-dec2023 /usr/local/bin/compute-dec2023
+COPY --from=builder /calico/build/calico_tests /usr/local/bin/calico_tests
 COPY src/detector_params.yml /opt/calico/detector_params.yml
 COPY src/detector_params.yml /src/detector_params.yml
 RUN ldconfig

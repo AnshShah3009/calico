@@ -92,29 +92,40 @@ camera-visualization.hpp
 
 set(CALICO_CUDA_LIBS "")
 if(ENABLE_CUDA)
-    if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-        set(CMAKE_CUDA_ARCHITECTURES 75)
-    endif()
-    enable_language(CUDA)
-    find_package(CUDAToolkit REQUIRED)
-    add_definitions(-DWITH_CUDA)
-    list(APPEND calico_SOURCES apriltag_cuda.cu)
-    list(APPEND CALICO_CUDA_LIBS CUDA::cudart)
-    if(TARGET opencv_cudaimgproc)
-        add_definitions(-DHAVE_OPENCV_CUDAIMGPROC)
-        list(APPEND CALICO_CUDA_LIBS opencv_cudaimgproc)
-        message(STATUS "OpenCV CUDA imgproc enabled")
-    endif()
-    if(DEFINED CUAPRILTAGS_INCLUDE_DIR AND EXISTS "${CUAPRILTAGS_INCLUDE_DIR}/cuAprilTags.h")
-        add_definitions(-DHAVE_CUAPRILTAGS)
-        include_directories(${CUAPRILTAGS_INCLUDE_DIR})
-        if(DEFINED CUAPRILTAGS_LIBRARY)
-            list(APPEND CALICO_CUDA_LIBS ${CUAPRILTAGS_LIBRARY})
+    include(CheckLanguage)
+    check_language(CUDA)
+    if(CMAKE_CUDA_COMPILER)
+        enable_language(CUDA)
+        set(CMAKE_CUDA_STANDARD 17)
+        set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+        # Turing sm_75 default (GTX 1650 Ti / RTX 20xx); override with -DCMAKE_CUDA_ARCHITECTURES=...
+        if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+            set(CMAKE_CUDA_ARCHITECTURES 75)
         endif()
-        message(STATUS "NVIDIA cuAprilTags enabled")
+        find_package(CUDAToolkit REQUIRED)
+        list(APPEND calico_SOURCES apriltag_cuda.cu)
+        add_definitions(-DCALICO_USE_CUDA)
+        set(CALICO_CUDA_LIBS CUDA::cudart)
+        # Optional: NVIDIA cuAprilTags if installed on host / in container
+        find_path(CUAPRILTAGS_INCLUDE_DIR nvapriltags/nvapriltags.h
+            HINTS /usr/local/include /usr/include)
+        find_library(CUAPRILTAGS_LIBRARY NAMES nvapriltags
+            HINTS /usr/local/lib /usr/lib)
+        if(CUAPRILTAGS_INCLUDE_DIR AND CUAPRILTAGS_LIBRARY)
+            message(STATUS "Found cuAprilTags: ${CUAPRILTAGS_LIBRARY}")
+            add_definitions(-DCALICO_HAVE_CUAPRILTAGS)
+            include_directories(${CUAPRILTAGS_INCLUDE_DIR})
+            list(APPEND CALICO_CUDA_LIBS ${CUAPRILTAGS_LIBRARY})
+        else()
+            message(STATUS "cuAprilTags not found (optional); GPU BGR->gray and Ceres CUDA enabled.")
+        endif()
+    else()
+        message(FATAL_ERROR "ENABLE_CUDA=ON but nvcc / CUDA compiler not found.")
     endif()
+
+    # Detect whether Ceres Solver was compiled with CUDA
     set(_ceres_cfg_file "")
-    foreach(_ceres_inc ${CERES_INCLUDE_DIRS} ${Ceres_INCLUDE_DIRS})
+    foreach(_ceres_inc IN LISTS Ceres_INCLUDE_DIRS CERES_INCLUDE_DIRS)
         if(EXISTS "${_ceres_inc}/ceres/internal/config.h")
             set(_ceres_cfg_file "${_ceres_inc}/ceres/internal/config.h")
             break()
@@ -130,10 +141,10 @@ if(ENABLE_CUDA)
     if(_ceres_cfg_file)
         file(READ "${_ceres_cfg_file}" _ceres_cfg)
         # Ceres 2.x: CUDA on => CERES_NO_CUDA is commented, or CERES_USE_CUDA is defined.
-        if(_ceres_cfg MATCHES "(^|\n)[ \t]*#define[ \t]+CERES_USE_CUDA")
+        if(_ceres_cfg MATCHES "(^|\\n)[ \\t]*#define[ \\t]+CERES_USE_CUDA")
             add_definitions(-DCERES_USE_CUDA)
             message(STATUS "Ceres was built with CUDA (${_ceres_cfg_file})")
-        elseif(NOT _ceres_cfg MATCHES "(^|\n)[ \t]*#define[ \t]+CERES_NO_CUDA")
+        elseif(NOT _ceres_cfg MATCHES "(^|\\n)[ \\t]*#define[ \\t]+CERES_NO_CUDA")
             if(_ceres_cfg MATCHES "CERES_NO_CUDA")
                 add_definitions(-DCERES_USE_CUDA)
                 message(STATUS "Ceres was built with CUDA (${_ceres_cfg_file})")
@@ -178,3 +189,28 @@ target_link_libraries(${CALICO_EXE} ${CERES_LIBRARIES} Eigen3::Eigen gomp ${Open
 install(TARGETS ${CALICO_EXE} DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 
 install(TARGETS ${COMPERROR_EXE} DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
+
+################ tests ################################
+
+option(BUILD_TESTING "Build CTest unit tests" ON)
+if(BUILD_TESTING)
+    enable_testing()
+    set(TEST_SOURCES
+        tests/test_main.cpp
+        tests/test_pattern_params.cpp
+        tests/test_math_helpers.cpp
+        tests/test_loss_and_checkpoint.cpp
+        pattern-parameters.cpp
+        apriltag-file.cpp
+        cuda-detect.cpp
+        helper.cpp
+        DirectoryFunctions.cpp
+    )
+    add_executable(calico_tests ${TEST_SOURCES})
+    target_include_directories(calico_tests PRIVATE ${Eigen_INCLUDE_DIRS} ${apriltag_INCLUDE_DIRS} ${CERES_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_features(calico_tests PRIVATE cxx_std_17)
+    target_compile_options(calico_tests PRIVATE ${my_USUAL_FLAGS})
+    target_link_libraries(calico_tests ${CERES_LIBRARIES} ${OpenCV_LIBS} ${apriltags_LIBRARIES} ${apriltag_LIBRARIES} gomp Eigen3::Eigen glog gflags)
+    add_test(NAME unit_tests COMMAND calico_tests)
+    install(TARGETS calico_tests DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
+endif()

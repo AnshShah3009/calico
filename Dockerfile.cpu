@@ -46,9 +46,9 @@ RUN cmake .. -DCMAKE_BUILD_TYPE=Release && make -j$(nproc) && make install && ld
 
 COPY src /calico/src
 WORKDIR /calico/build
-RUN cmake ../src -DCMAKE_BUILD_TYPE=Release -DENABLE_CUDA=OFF && make -j$(nproc)
+RUN cmake ../src -DCMAKE_BUILD_TYPE=Release -DENABLE_CUDA=OFF && make -j$(nproc) && ctest --output-on-failure
 
-FROM ubuntu:22.04
+FROM ubuntu:22.04 AS runtime
 RUN apt-get update && apt-get install -y \
     libgtk2.0-0 libtbb2 libgoogle-glog0v5 libsuitesparseconfig5 \
     libcholmod3 liblapack3 libblas3 libatlas3-base libgomp1 \
@@ -56,6 +56,7 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /usr/local /usr/local
 COPY --from=builder /calico/build/calico-dec2023 /usr/local/bin/calico-dec2023
 COPY --from=builder /calico/build/compute-dec2023 /usr/local/bin/compute-dec2023
+COPY --from=builder /calico/build/calico_tests /usr/local/bin/calico_tests
 COPY src/detector_params.yml /opt/calico/detector_params.yml
 COPY src/detector_params.yml /src/detector_params.yml
 RUN ldconfig
