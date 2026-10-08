@@ -21,6 +21,38 @@ Roadmap
 - [Input format](#input-format)
 - [Output format](#output-format)
 	
+
+## Multi-Camera Rig Calibration & Verification Showcase
+
+Detailed documentation and visual walkthrough available in [docs/CALIBRATION_WALKTHROUGH.md](docs/CALIBRATION_WALKTHROUGH.md).
+
+### 1. Multi-Camera Rig Setup
+A 3-camera surround system observing synchronized rigid ChArUco calibration targets in MuJoCo:
+
+![Multi-Camera Rig Setup](docs/images/rig_setup_charuco.png)
+
+### 2. Detection & Feature Refinement
+Sub-pixel corner detection across ChArUco targets and reprojection verification:
+
+| Board Layout | Detection & Corner Fit | Reprojected Overlay |
+| :---: | :---: | :---: |
+| ![Board Layout](docs/images/charuco_board_layout.png) | ![Detection](docs/images/charuco_detection.png) | ![Reprojection](docs/images/charuco_reprojection.png) |
+
+### 3. 3D Camera Network Reconstruction & Ceres Optimization
+Estimated 3D camera poses and board coordinate frames:
+
+![Calibrated Camera Network](docs/images/calibrated_camera_network_3d.png)
+
+### 4. Ground-Truth Validation Metrics
+Verified against synthetic ground truth in MuJoCo simulation:
+
+| Metric | Ground Truth | Estimated | Error | Threshold | Verdict |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Intrinsics (fx, fy, cx, cy)** | 799.92 px | 799.92 px | **0.00 px** | <= 1.0 px | **PASS** |
+| **Rotation Error (max)** | — | — | **1.45 deg** | <= 3.0 deg | **PASS** |
+| **Translation Error (max)** | — | — | **20.56 mm** | <= 25.0 mm | **PASS** |
+| **Reprojection RMS Error** | — | — | **0.21 - 0.28 px** | <= 1.50 px | **PASS** |
+
 # Contact 
 
 Comments/Bugs/Problems: amy.tabb@usda.gov, or open an issue on Github.
