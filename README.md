@@ -107,6 +107,29 @@ If you use this code in project that results in a publication, please cite at a 
 
 [Install Docker](https://docs.docker.com/install/), if you haven't already.  I endorse uninstalling old versions if you have them floating around.
 
+### Pre-built Docker Images (CPU & GPU/CUDA)
+
+Both CPU and GPU-accelerated Docker images are supported:
+
+| Image Flavor | Docker Tag | Hardware Requirements |
+| :--- | :--- | :--- |
+| **CPU** | `<username>/calico:cpu` (or `:latest`) | x86_64 CPU |
+| **CUDA (GPU)** | `<username>/calico:cuda` | NVIDIA GPU + NVIDIA Container Toolkit |
+
+#### Automated CI/CD Publishing to Docker Hub
+To automatically build and push both images on releases and pushes to `main`:
+1. In your GitHub repository, navigate to **Settings** > **Secrets and variables** > **Actions**.
+2. Add the following repository secrets:
+   - `DOCKERHUB_USERNAME`: Your Docker Hub username.
+   - `DOCKERHUB_TOKEN`: A Docker Hub Personal Access Token (PAT) with `Read & Write` permissions.
+3. Once configured, GitHub Actions will automatically build, tag, and publish both `calico:cpu` and `calico:cuda` images on release tags or manual workflow dispatch.
+
+#### Manual Push
+Alternatively, you can build and push both images from your terminal using:
+```bash
+./tools/push_docker.sh <your-dockerhub-username> [version-tag]
+```
+
 ### Pull the image
 
 The image for CALICO is : [amytabb/calico-dec2023](https://hub.docker.com/r/amytabb/calico-dec2023).
