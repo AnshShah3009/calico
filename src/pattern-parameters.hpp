@@ -36,7 +36,7 @@ public:
         squareLength_mm = 0;
         tagSpace_mm = 0;
 
-        april_family = "tagCodes36h11";
+        april_family = "tag36h11";
     }
 
     bool FigureOutAprilCase(); // returns true if the case is space == squarelength

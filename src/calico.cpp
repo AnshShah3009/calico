@@ -14,6 +14,7 @@
 #include "multicamera.hpp"
 #include "solving-structure.hpp"
 #include "pattern-parameters.hpp"
+#include "cuda-detect.hpp"
 #include <ctime>
 #include <unistd.h>
 #include <fcntl.h>
@@ -77,6 +78,10 @@ int main(int argc, char **argv){
     int no_debug_images = 0;
     int detection_summary = 0;
     int per_camera_mse = 0;
+    int use_cuda = 0;
+    string ingest_intrinsics_dir = "";
+    string loss_type = "trivial";
+    float loss_scale = 1.0f;
 
     if (argc == 1){
         print_help = 1;
@@ -134,6 +139,10 @@ int main(int argc, char **argv){
                 {"per-camera-mse", no_argument, &per_camera_mse, 1},
                 {"focus-camera", required_argument, 0, 'v'},
                 {"min-boards", required_argument, 0, 'w'},
+                {"use-cuda", no_argument, &use_cuda, 1},
+                {"ingest-intrinsics", required_argument, 0, 'x'},
+                {"loss", required_argument, 0, 'y'},
+                {"loss-scale", required_argument, 0, 'z'},
         };
 
         if (argc == 1){ print_help = 1; }
@@ -217,6 +226,10 @@ int main(int argc, char **argv){
             cout << std::left << setw(30) << "--per-camera-mse " << "Append per-camera reprojection MSE to total_results.txt." << endl;
             cout << std::left << setw(30) << "--focus-camera=[STR] " << "Comma-separated cameras to calibrate (inverse of exclude)." << endl;
             cout << std::left << setw(30) << "--min-boards=[INT] " << "Auto-exclude cameras detecting fewer than N boards." << endl;
+            cout << std::left << setw(30) << "--use-cuda " << "GPU preprocess, optional cuAprilTags, Ceres CUDA if built WITH_CUDA." << endl;
+            cout << std::left << setw(30) << "--ingest-intrinsics=[DIR] " << "Load per-camera cali_results.txt and keep K/dist fixed." << endl;
+            cout << std::left << setw(30) << "--loss=[STR] " << "Robust loss: trivial (default), huber, or cauchy." << endl;
+            cout << std::left << setw(30) << "--loss-scale=[FLOAT] " << "Loss scale parameter in pixels (default: 1.0)." << endl;
 
             cout << "All other arguments are ignored." << endl;
             cout << endl << endl;
@@ -227,7 +240,7 @@ int main(int argc, char **argv){
         int option_index = 0;
         int opt_argument;
 
-        opt_argument = getopt_long (argc, argv, "abcdefghijklmnopqrstuvw",
+        opt_argument = getopt_long (argc, argv, "abcdefghijklmnopqrstuvwxyz",
                 long_options, &option_index);
 
         if (opt_argument == -1)
@@ -332,6 +345,15 @@ int main(int argc, char **argv){
         case 'w':
             min_boards = FromString<int>(optarg);
             break;
+        case 'x':
+            ingest_intrinsics_dir = optarg;
+            break;
+        case 'y':
+            loss_type = optarg;
+            break;
+        case 'z':
+            loss_scale = FromString<float>(optarg);
+            break;
 
         default:{
             cout << "Argument not found " << optarg << endl;
@@ -359,6 +381,10 @@ int main(int argc, char **argv){
     int cli_detection_summary = detection_summary;
     int cli_per_camera_mse = per_camera_mse;
     int cli_min_boards = min_boards;
+    int cli_use_cuda = use_cuda;
+    string cli_ingest_intrinsics_dir = ingest_intrinsics_dir;
+    string cli_loss_type = loss_type;
+    float cli_loss_scale = loss_scale;
     string cli_camera_color_str = camera_color_str;
     string cli_pattern_color_str = pattern_color_str;
     string cli_camera_names_str = camera_names_str;
@@ -397,6 +423,10 @@ int main(int argc, char **argv){
 
                 if (key == "num-threads" || key == "num_threads") {
                     if (ival > 0) { number_threads = ival; omp_set_num_threads(ival); }
+                } else if (key == "charuco") { if (ival) is_charuco = 1;
+                } else if (key == "april") { if (ival) is_april = 1;
+                } else if (key == "calibrate") { if (ival) calibrateGroupCameras = 1;
+                } else if (key == "create-patterns" || key == "create_patterns") { if (ival) create_patterns_only = 1;
                 } else if (key == "max-internal-read" || key == "max_internal_read") { if (ival > 0) max_internal_read = ival;
                 } else if (key == "max-internal-use" || key == "max_internal_use") { if (ival > 0) max_internal_use = ival;
                 } else if (key == "max-external" || key == "max_external") { if (ival > 0) max_external_positions = ival;
@@ -431,9 +461,16 @@ int main(int argc, char **argv){
                 } else if (key == "no-debug-images" || key == "no_debug_images") { if (ival) no_debug_images = 1;
                 } else if (key == "detection-summary" || key == "detection_summary") { if (ival) detection_summary = 1;
                 } else if (key == "per-camera-mse" || key == "per_camera_mse") { if (ival) per_camera_mse = 1;
+                } else if (key == "loss") {
+                    if (!val_str.empty()) loss_type = val_str;
+                } else if (key == "loss-scale" || key == "loss_scale") {
+                    if (fval > 0) loss_scale = fval;
                 } else if (key == "focus-camera" || key == "focus_camera") {
                     if (!val_str.empty()) focus_camera_str = val_str;
                 } else if (key == "min-boards" || key == "min_boards") { if (ival > 0) min_boards = ival;
+                } else if (key == "use-cuda" || key == "use_cuda") { if (ival) use_cuda = 1;
+                } else if (key == "ingest-intrinsics" || key == "ingest_intrinsics") {
+                    if (!val_str.empty()) ingest_intrinsics_dir = val_str;
                 }
             }
             cfg.close();
@@ -468,6 +505,10 @@ int main(int argc, char **argv){
     if (cli_initial_focal_px >= 0) initial_focal_px = cli_initial_focal_px;
     if (cli_percentage_global_alg != 0.2) percentage_global_alg = cli_percentage_global_alg;
     if (cli_percentage_global_rp != 0.5) percentage_global_rp = cli_percentage_global_rp;
+    if (cli_use_cuda) use_cuda = 1;
+    if (!cli_ingest_intrinsics_dir.empty()) ingest_intrinsics_dir = cli_ingest_intrinsics_dir;
+    if (cli_loss_type != "trivial") loss_type = cli_loss_type;
+    if (cli_loss_scale != 1.0f) loss_scale = cli_loss_scale;
     omp_set_num_threads(number_threads);
 
     // Build CalicoOptions
@@ -492,8 +533,28 @@ int main(int argc, char **argv){
     opts.max_images = max_images;
     opts.resume_dir = resume_dir;
     opts.config_file = config_file;
+    opts.use_cuda = (use_cuda == 1);
+    opts.ingest_intrinsics_dir = ingest_intrinsics_dir;
+    if (!opts.ingest_intrinsics_dir.empty()) {
+        EnsureDirHasTrailingBackslash(opts.ingest_intrinsics_dir);
+    }
+    opts.loss_type = loss_type;
+    opts.loss_scale = loss_scale;
 
     g_num_threads = number_threads;
+    g_use_cuda = opts.use_cuda ? 1 : 0;
+    if (opts.use_cuda) {
+        cout << "CUDA requested. Built with CUDA=" << (calico_cuda::CompiledWithCuda() ? "yes" : "no")
+             << ", GPU available=" << (calico_cuda::GpuAvailable() ? "yes" : "no");
+        string gpu_name = calico_cuda::DeviceName();
+        if (!gpu_name.empty()) {
+            cout << " (" << gpu_name << ")";
+        }
+        cout << endl;
+        if (calico_cuda::CompiledWithCuda() && calico_cuda::GpuAvailable()) {
+            cout << "GPU BGR→gray probe: " << (calico_cuda::ProbeGpuGray() ? "ok" : "FAILED") << endl;
+        }
+    }
 
     // Parse --focus-camera
     if (focus_camera_str.size() > 0) {
@@ -890,9 +951,14 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
 
         id_camera_dir = input_dir + "data/" + actual_cam_dir;
 
+        int int_read = max_internal_read;
+        if (!options.ingest_intrinsics_dir.empty() && int_read < 0) {
+            int_read = 0;
+        }
+
         CameraCali* C = new CameraCali(id_camera_dir, P_Class,
-                max_external_positions, max_internal_read,
-                max_internal_use);
+                max_external_positions, int_read,
+                max_internal_use, options.use_cuda);
 
 #pragma omp critical
         {
@@ -914,10 +980,20 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
 
             mkdir(id_camera_dir.c_str(),  S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
 
+            string ingest_file = "";
+            if (!options.ingest_intrinsics_dir.empty()) {
+                ingest_file = options.ingest_intrinsics_dir + actual_cam_dir + "/cali_results.txt";
+                if (CCV[i]->LoadIntrinsics(ingest_file)) {
+                    cout << "Using ingested K/dist for ChArUco corner interpolation on "
+                         << actual_cam_dir << endl;
+                }
+            }
+
             CCV[i]->FindCorners(id_camera_dir);
 
             CCV[i]->CalibrateBasic(initial_focal_px, zero_tangent_dist, zero_k3,
-                    fix_principal_point, id_camera_dir, number_points_needed_to_count_pattern);
+                    fix_principal_point, id_camera_dir, number_points_needed_to_count_pattern,
+                    false, ingest_file);
 
         }
 
@@ -1033,6 +1109,11 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
     if (mod_solve == 0){mod_solve = 1;}
 
     CeresProblemClass CPC(Cali_Quaternion, MC, ceres_out);
+    CPC.loss_type = options.loss_type;
+    CPC.loss_scale = options.loss_scale;
+    if (CPC.loss_type != "trivial") {
+        cout << "Using robust loss for reprojection error: " << CPC.loss_type << " (scale " << CPC.loss_scale << ")" << endl;
+    }
 
     if (variable_order.size() > 0){
         num_equations = CPC.AddToProblemAlgebraicError(MC, variable_order, equation_order, out, variable_order.size());
@@ -1040,7 +1121,52 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
     }
 
     auto stage4_start = std::chrono::high_resolution_clock::now();
-    for (int i = 0, vn = MC.NumberVariables(); i < vn && has_some_to_solve == true; i++){
+    int resume_i = 0;
+    int resume_stage = 0;
+    int stage5_resume_eq = 0;
+    if (!options.resume_dir.empty()) {
+        string resume_path = options.resume_dir;
+        EnsureDirHasTrailingBackslash(resume_path);
+        if (MC.LoadCheckpoint(resume_path, resume_stage, resume_i)) {
+            if (resume_stage >= 5) {
+                stage5_resume_eq = resume_i;
+                cout << "Resuming Stage 5 from equation index " << stage5_resume_eq << endl;
+                has_some_to_solve = false;
+                for (int v = 0; v < MC.NumberVariables(); v++) {
+                    if (MC.V_has_initialization[v]) {
+                        variable_order.push_back(v);
+                    }
+                }
+            } else {
+                cout << "Resuming Stage 4 from variable index " << resume_i << endl;
+                // Checkpoint restores poses only; rebuild the Ceres algebraic residuals for
+                // every variable that was already solved so resume matches a continuous run.
+                vector<char> already(MC.NumberVariables(), 0);
+                for (int v : variable_order) {
+                    if (v >= 0 && v < MC.NumberVariables()) {
+                        already[v] = 1;
+                    }
+                }
+                int newly = 0;
+                for (int v = 0; v < MC.NumberVariables(); v++) {
+                    if (MC.V_has_initialization[v] && !already[v]) {
+                        variable_order.push_back(v);
+                        newly++;
+                    }
+                }
+                if (newly > 0) {
+                    num_equations = CPC.AddToProblemAlgebraicError(MC, variable_order, equation_order,
+                            out, newly);
+                    equations_per_iter.push_back(num_equations);
+                    CPC.SolveWriteBackToMCAlgebraicError(MC, ceres_out, number_iters_local, true);
+                }
+                var_accumulator = 0;
+            }
+        } else {
+            resume_i = 0;
+        }
+    }
+    for (int i = (resume_stage < 5 ? resume_i : MC.NumberVariables()), vn = MC.NumberVariables(); i < vn && has_some_to_solve == true; i++){
 
         if (show_progress && (i % 10 == 0 || i == vn - 1 || i == 0)) {
             auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
@@ -1070,7 +1196,7 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
             }
         }
 
-        if (options.checkpoint_enabled && i % 50 == 0 && i > 0) {
+        if (options.checkpoint_enabled && (i == 0 || i % 10 == 0 || i == vn - 1)) {
             MC.WriteCheckpoint(output_dir, 4, i);
         }
 
@@ -1089,10 +1215,16 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
         cout << endl;
     }
 
-    num_equations = CPC.AddToProblemAlgebraicError(MC, variable_order, equation_order, out, var_accumulator);
-    equations_per_iter.push_back(num_equations);
+    if (resume_stage < 5) {
+        if (options.checkpoint_enabled) {
+            MC.WriteCheckpoint(output_dir, 4, MC.NumberVariables());
+        }
 
-    CPC.SolveWriteBackToMCAlgebraicError(MC, ceres_out, number_iters_local, true);
+        num_equations = CPC.AddToProblemAlgebraicError(MC, variable_order, equation_order, out, var_accumulator);
+        equations_per_iter.push_back(num_equations);
+
+        CPC.SolveWriteBackToMCAlgebraicError(MC, ceres_out, number_iters_local, true);
+    }
 
     cout << "break in between algebraic error and reprojection ... " << endl;
 
@@ -1128,12 +1260,25 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
 
         end_index = min(start_index + number_equations_before_solve, number_equations);
 
+        if (start_index < stage5_resume_eq) {
+            CPC.AddEqsToProblemReprojectionError(MC, CCV, camera_params, start_index, end_index, equation_order);
+            continue;
+        }
+
         cout << "Adding equations  " << start_index << ", " << end_index << endl;
 
         CPC.AddEqsToProblemReprojectionError(MC, CCV, camera_params, start_index, end_index, equation_order);
 
         CPC.SolveWriteBackToMCRP(MC, ceres_out, number_iters_rp, variable_order, true);
 
+        if (options.checkpoint_enabled) {
+            MC.WriteCheckpoint(output_dir, 5, end_index);
+        }
+
+    }
+
+    if (options.checkpoint_enabled) {
+        MC.WriteCheckpoint(output_dir, 5, number_equations);
     }
 
     if (show_progress) {
@@ -1257,6 +1402,9 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
         json_out << "  \"tool\": \"calico-dec2023\"," << endl;
         json_out << "  \"num_cameras\": " << number_cameras << "," << endl;
         json_out << "  \"duration_sec\": " << total_sec << "," << endl;
+        json_out << "  \"opencv\": \"" << CV_MAJOR_VERSION << "." << CV_MINOR_VERSION << "." << CV_SUBMINOR_VERSION << "\"," << endl;
+        json_out << "  \"cuda\": " << (g_use_cuda ? "true" : "false") << "," << endl;
+        json_out << "  \"pattern\": \"" << (is_charuco ? "charuco" : "april") << "\"," << endl;
         json_out << "  \"cameras\": [" << endl;
         for (int i = 0; i < number_cameras; i++) {
             json_out << "    {" << endl;
@@ -1271,12 +1419,42 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
                 json_out << "      \"k2\": " << CCV[i]->distortion[1] << "," << endl;
                 json_out << "      \"p1\": " << CCV[i]->distortion[2] << "," << endl;
                 json_out << "      \"p2\": " << CCV[i]->distortion[3] << "," << endl;
-                json_out << "      \"k3\": " << CCV[i]->distortion[4] << endl;
-            } else {
-                json_out << endl;
+                json_out << "      \"k3\": " << CCV[i]->distortion[4];
             }
+            json_out << "," << endl;
+            json_out << "      \"T_world_camera\": [";
+            const Matrix4d& Tcam = MC.V_initial[i];
+            for (int r = 0; r < 4; r++) {
+                json_out << "[";
+                for (int c = 0; c < 4; c++) {
+                    json_out << Tcam(r, c);
+                    if (c < 3) json_out << ", ";
+                }
+                json_out << "]";
+                if (r < 3) json_out << ", ";
+            }
+            json_out << "]" << endl;
             json_out << "    }";
             if (i < number_cameras - 1) json_out << ",";
+            json_out << endl;
+        }
+        json_out << "  ]," << endl;
+        json_out << "  \"boards\": [" << endl;
+        int npat = MC.NumberPatterns();
+        for (int p = 0; p < npat; p++) {
+            json_out << "    {\"index\": " << p << ", \"T_world_board\": [";
+            const Matrix4d& Tb = MC.V_initial[number_cameras + p];
+            for (int r = 0; r < 4; r++) {
+                json_out << "[";
+                for (int c = 0; c < 4; c++) {
+                    json_out << Tb(r, c);
+                    if (c < 3) json_out << ", ";
+                }
+                json_out << "]";
+                if (r < 3) json_out << ", ";
+            }
+            json_out << "]}";
+            if (p < npat - 1) json_out << ",";
             json_out << endl;
         }
         json_out << "  ]" << endl;
@@ -1382,6 +1560,9 @@ void DryRunValidation(const string& input_dir, const string& output_dir,
         if (is_charuco) {
             cout << "  Marker length: " << pp.markerLength << " px" << endl;
             cout << "  Aruco dict code: " << pp.arc_code << endl;
+        } else {
+            cout << "  Tag family: " << NormalizeAprilFamily(pp.april_family) << endl;
+            cout << "  Tag spacing: " << pp.tagSpace << " px" << endl;
         }
 
         bool valid = ValidatePatternParams(pp, spec_file);

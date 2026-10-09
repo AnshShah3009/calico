@@ -1,0 +1,12 @@
+%YAML:1.0
+# ChArUco grid specification for CALICO
+# Copy to <input>/network_specification_file.yaml
+# Generate with: calico-dec2023 --charuco --create-patterns --input=... --output=...
+type: charuco
+squaresX: 7
+squaresY: 5
+squareLength: 80
+markerLength: 60
+margins: 20
+numberBoards: 2
+arcCode: 10

@@ -11,6 +11,7 @@
 #include "camera-visualization.hpp"
 #include "helper.hpp"
 #include "solving-structure.hpp"
+#include <ios>
 //used
 single_relationship_container::single_relationship_container(int l){
 
@@ -2271,6 +2272,12 @@ void MCcali::WriteCheckpoint(const string& write_dir, int stage, int variable_in
     }
 
     cp.close();
+
+    string latest = write_dir + "checkpoint.txt";
+    ifstream src(cp_file.c_str(), std::ios::binary);
+    ofstream dst(latest.c_str(), std::ios::binary);
+    dst << src.rdbuf();
+
     cout << "Checkpoint saved: " << cp_file << " (var " << variable_index << ")" << endl;
 }
 
@@ -2279,9 +2286,17 @@ bool MCcali::LoadCheckpoint(const string& write_dir, int& stage, int& variable_i
     ifstream cp(cp_file.c_str());
 
     if (!cp.good()) {
-        // Try variant naming
         cp_file = write_dir + "checkpoint_stage4.txt";
+        cp.close();
         cp.open(cp_file.c_str());
+    }
+    if (!cp.good()) {
+        // accept a bare file path
+        cp.close();
+        cp.open(write_dir.c_str());
+        if (cp.good()) {
+            cp_file = write_dir;
+        }
     }
 
     if (!cp.good()) {

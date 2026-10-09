@@ -1,111 +1,152 @@
-# AGENTS.md — calico
+# AGENTS.md — calico (Ansh QoL + OpenCV 5 / CUDA)
 
 Multi-camera calibration (C++17, CMake). Paper: https://arxiv.org/abs/1903.06811
 
+This tree is **AnshShah3009/calico** (Amy Tabb’s CALICO plus QoL flags), extended with OpenCV 5-compatible ArUco, CUDA-assisted detection, working `--resume`, richer `--json`, and ingestable intrinsics.
+
 ## Build
 
+CPU:
+
 ```bash
-mkdir build && cd build
-cmake ../src
+mkdir -p build && cd build
+cmake ../src -DCMAKE_BUILD_TYPE=Release -DENABLE_CUDA=OFF
 make -j$(nproc)
+```
+
+CUDA (Ceres + GPU grayscale / optional NVIDIA cuAprilTags):
+
+```bash
+cmake ../src -DCMAKE_BUILD_TYPE=Release -DENABLE_CUDA=ON
+make -j$(nproc)
+```
+
+Optional NVIDIA cuAprilTags (tag36h11 only):
+
+```bash
+cmake ../src -DENABLE_CUDA=ON \
+  -DCUAPRILTAGS_INCLUDE_DIR=/path/to/cuapriltags \
+  -DCUAPRILTAGS_LIBRARY=/path/to/libcuapriltags.so
 ```
 
 Produces `calico-dec2023` and `compute-dec2023`.
 
-## Key constraints
+Docker:
 
-- **OpenCV ≤ 4.3.0 only** (4.4+ incompatible). Pinned in `src/CMakeLists.txt:21`.
-- Requires Eigen3, Ceres Solver, AprilTags (two libs: `apriltags` + `apriltag`), OpenMP (`libgomp1`).
-- Dockerfile at repo root builds everything on Ubuntu 22.04.
+```bash
+docker compose build calico-cpu
+# GPU machine:
+docker compose build calico-cuda
+```
+
+## OpenCV
+
+CMake tries **OpenCV 5**, then **4.7+**, then **4.3**. ArUco lives in `objdetect` on 4.7+/5 (`ArucoDetector` / `CharucoBoard` constructor). Legacy `CharucoBoard::create` is still compiled for 4.3.
+
+Pinned Docker images use **OpenCV 5.0.0**. On 4.7+/5, CALICO uses:
+
+- `CharucoBoard::setLegacyPattern(true)` so printed boards from OpenCV < 4.6 still decode
+- `ArucoDetector::refineDetectedMarkers` per board (recovers markers from rejected quads)
+- `CharucoDetector::detectBoard` for chessboard-corner interpolation
+- ingested K/dist, when `--ingest-intrinsics` is set, for pose-reprojection interpolation (more accurate than homography)
+
+There is no `cv::cuda::aruco` API.
+
+## CUDA / AprilTag
+
+`--use-cuda` (no-op if the binary was built without `ENABLE_CUDA`):
+
+- GPU BGR→gray (`apriltag_cuda.cu`; OpenCV `cudaimgproc` only if you built OpenCV 5 with `opencv_contrib` `cudev`)
+- AprilTag: NVIDIA **cuAprilTags** for `tag36h11` when headers/libs are passed into CMake; otherwise GPU gray + CPU Kaess/AprilRobotics (or OpenCV `DICT_APRILTAG_*`)
+- Ceres dense CUDA when Ceres was built with `USE_CUDA`
+
+The Docker CUDA image does **not** vendor cuAprilTags or OpenCV contrib; `--use-cuda --april` still GPU-converts frames, then detects on CPU.
+
+ChArUco detection stays on CPU (OpenCV has no `cv::cuda::aruco`). `--use-cuda` still runs a GPU BGR→gray probe and, if Ceres was built with CUDA, the dense solver.
+
+## AprilTag grids
+
+`--april` (exclusive with `--charuco`) uses a grid of AprilTags (`squaresX` × `squaresY` tags, `tagSpace` gap, one or more `numberBoards`).
+
+Supported families: `tag36h11` (default), `tag25h9`, `tag16h5` (render + detect), plus Kaess `tag25h7` / `tag36h9` (detect; OpenCV can render `tag36h11` / `tag25h9` / `tag16h5`). Aliases such as `tagCodes36h11` are accepted.
+
+Detection order: GPU **cuAprilTags** (`tag36h11` only, if linked) → Kaess CPU → OpenCV `DICT_APRILTAG_*`. `--use-cuda` always GPU-converts BGR→gray first.
+
+Example spec: `configs/april-grid.yaml`. Generate with `--april --create-patterns`, then calibrate with `--april --calibrate`.
 
 ## Running
 
 `--charuco` or `--april` is **mandatory** (exclusive or). `--calibrate` or `--create-patterns` also mandatory.
 
 ```bash
-./calico-dec2023 --charuco --calibrate --input=<dir> --output=<dir>
+./calico-dec2023 --charuco --calibrate --input=<dir> --output=<dir> \
+  --config=configs/calico.cfg --json --checkpoint
 ```
 
-### Quality-of-life flags (21 total)
+Resume a killed Stage 4 solve (poses only; detection is not replayed from the checkpoint file):
 
-| Flag | Type | Description |
-|------|------|-------------|
-| `--version` | flag | Print version and exit |
-| `--dry-run` | flag | Validate input without calibrating |
-| `--quiet` | flag | Suppress all calibration stdout |
-| `--summary` | flag | Print brief summary after calibration |
-| `--progress` | flag | Show stage 4/5 progress percentage |
-| `--no-progress` | flag | Disable progress even with `--progress` |
-| `--timestamp` | flag | Append timestamp to output dir |
-| `--no-overwrite` | flag | Refuse if output dir has results |
-| `--force` | flag | Override `--no-overwrite` |
-| `--checkpoint` | flag | Periodic solver state checkpointing |
-| `--resume=DIR` | arg | Resume from checkpoint |
-| `--auto-rename` | flag | Add input basename to output dir |
-| `--json` | flag | Write `calibration.json` output |
-| `--config=FILE` | arg | Read options from config file |
-| `--camera-color=STR` | arg | Per-camera PLY colors (`R,G,B\|R,G,B\|...`) |
-| `--pattern-color=STR` | arg | Per-pattern PLY colors |
-| `--camera-names=STR` | arg | Comma-separated camera name overrides |
-| `--exclude-camera=STR` | arg | Comma-separated cameras to exclude |
-| `--focus-camera=STR` | arg | Only calibrate listed cameras (inverse of exclude) |
-| `--max-images=INT` | arg | Unified image cap for all cameras |
-| `--min-boards=INT` | arg | Auto-exclude cameras detecting fewer than N boards |
-| `--num-threads=N` | arg | Thread count (default: OMP max) |
-| `--no-visualization` | flag | Skip PLY meshes + equation PNGs (saves ~37 MB) |
-| `--no-debug-images` | flag | Skip per-image detection PNGs (779 files) |
-| `--detection-summary` | flag | Print board visibility table per camera |
-| `--per-camera-mse` | flag | Append per-camera reprojection MSE to output |
+```bash
+./calico-dec2023 --charuco --calibrate --input=<dir> --output=<dir> \
+  --resume=<same-output-dir> --checkpoint
+```
 
-Config file format (simple key: value):
+Use factory / previous `cali_results.txt`:
+
+```
+--ingest-intrinsics=/path/to/intrinsics
+# expects <dir>/<camera_name>/cali_results.txt
+```
+
+### Quality-of-life flags
+
+See `--help`. Config file format (`configs/calico.cfg`):
+
 ```
 quiet: 1
 summary: 1
-num-threads: 4
-exclude-camera: camera_images0,camera_images1
-no-visualization: 1
-detection-summary: 1
+use-cuda: 1
+ingest-intrinsics: /data/intrinsics
 ```
-CLI args override config values. Both `hyphenated-keys` and `underscored_keys` work.
 
-### Output additions
-- `total_results.txt` includes per-camera focal/distortion summary, plus per-camera MSE with `--per-camera-mse`
-- `calibration.json` written with `--json` (machine-readable format)
-- `--no-visualization` skips `cameras-incremental/` and `reconstructed-patterns/` (all PLY/PNG)
-- `--no-debug-images` skips per-camera `initial_detect*.png` (779 files, ~37 MB)
+CLI overrides config. Hyphenated and underscored keys both work.
 
-See README for full flag reference. Test datasets: http://doi.org/10.5281/zenodo.3520866
+`--json` writes `calibration.json` with intrinsics **and** 4×4 camera/board poses.
+
+`--resume` loads `checkpoint.txt` (also written as `checkpoint_stage4.txt`).
 
 ## Input format
 
 ```
 <input>/data/
-  camera0/           # images (or internal/ + external/ subdirs)
+  camera0/
   camera1/
-  ...
-<input>/network_specification_file.yaml   # pattern def
-<input>/pattern_square_mm<N>.txt          # one per pattern
+<input>/network_specification_file.yaml
+<input>/pattern_square_mm<N>.txt
 ```
 
-## Output format
+## Verification & 3D Visualization
 
+### Synthetic MuJoCo Ground-Truth Verification
+An end-to-end multi-camera testbench is located in `sim/verify_mujoco_april.py`. It renders a multi-board scene across 3 cameras in MuJoCo, executes CALICO via Docker (`calico-cpu` or `calico-cuda`), and checks recovered intrinsics and camera poses against analytical ground truth:
+
+```bash
+# CPU mode:
+MUJOCO_GL=osmesa python3 sim/verify_mujoco_april.py
+
+# CUDA mode:
+MUJOCO_GL=osmesa python3 sim/verify_mujoco_april.py --use-cuda
 ```
-<output>/
-  cameras-incremental/   # calibration results + .ply visualizations
-  data/                  # per-camera cali_results.txt
-  patterns/              # generated pattern images
-  reconstructed-patterns/
-  total_results.txt
-  camera_cali_incremental.txt   # final network calibration
-  arguments-calico.txt
+
+Verification thresholds: $f_x, f_y \le 1.0\text{ px}$, relative rotation $\le 0.5^\circ$, relative translation $\le 10\text{ mm}$, reprojection $\text{RMS} \le 1.5\text{ px}$.
+
+### Interactive 3D WebGL / HTML Visualizer
+Generate an interactive Three.js 3D report from any CALICO output directory containing `calibration.json`:
+
+```bash
+python3 tools/visualize_calibration.py <output_dir> -o <output_dir>/report_3d.html
 ```
 
-## No tests
+Renders 3D camera frustums, optical centers, baseline distances, boards, and an interactive properties/reprojection panel.
 
-No test framework, test directory, or CI config exists. The only verification path is to download a Zenodo dataset and run.
-
-## Repo structure
-
-- `src/` — all source, flat layout, no subdirectories
-- `Dockerfile` — reproducible build environment
-- No monorepo, no packages, no codegen, no linter/formatter config
+### Real-world datasets
+Verify real capture rigs with Zenodo datasets: http://doi.org/10.5281/zenodo.3520866

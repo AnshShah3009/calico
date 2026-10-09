@@ -622,6 +622,18 @@ public:
 
     Problem problemRP;
 
+    string loss_type = "trivial";
+    double loss_scale = 1.0;
+
+    ceres::LossFunction* CreateLoss() {
+        if (loss_type == "huber") {
+            return new ceres::HuberLoss(loss_scale > 0.0 ? loss_scale : 1.0);
+        } else if (loss_type == "cauchy") {
+            return new ceres::CauchyLoss(loss_scale > 0.0 ? loss_scale : 1.0);
+        }
+        return NULL;
+    }
+
     CeresProblemClass(PARAM_TYPE parameter_type, MCcali& MC, std::ofstream& out);
 
     ~CeresProblemClass();

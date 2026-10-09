@@ -243,6 +243,36 @@ where `/usr/local/opencv41/lib/cmake/opencv4/` is the directory containing `Open
 
 ## Running
 
+### Quality-of-Life & Extended CLI Flags
+
+| Flag | Argument | Description |
+| :--- | :--- | :--- |
+| `--help` | — | Display comprehensive help and argument list |
+| `--version` | — | Print version information and exit |
+| `--dry-run` | — | Validate dataset structure, pattern files, and camera inputs without calibrating |
+| `--quiet` | — | Suppress verbose calibration logs |
+| `--summary` | — | Print concise post-calibration summary with errors and metrics |
+| `--progress` | — | Display interactive progress percentage for Stage 4 & 5 solving |
+| `--no-progress` | — | Disable progress display |
+| `--timestamp` | — | Automatically append execution timestamp to the output directory |
+| `--no-overwrite` | — | Abort safely if the target output directory already contains results |
+| `--json` | — | Export structured `calibration.json` with intrinsics, extrinsics, and poses |
+| `--checkpoint` | — | Periodically write optimization checkpoint files to disk |
+| `--resume=<dir>` | Path | Resume calibration from saved checkpoint directory |
+| `--resume-stage=<N>` | `4` or `5` | Select optimization stage to resume (`4`=algebraic, `5`=reprojection) |
+| `--use-cuda` | — | Enable CUDA GPU acceleration for frame conversion and target detection |
+| `--loss=<type>` | `trivial`, `huber`, `cauchy` | Set Ceres Solver robust loss function for bundle adjustment |
+| `--loss-scale=<val>` | Float | Scale parameter delta for Huber / Cauchy loss function |
+| `--ingest-intrinsics=<dir>` | Path | Ingest pre-calibrated intrinsic parameters and fix them during optimization |
+| `--config=<path>` | Path | Load arguments and options from a `.cfg` / `.yaml` file |
+| `--threads=<N>` | Int | Number of OpenMP worker threads |
+| `--filter-camera=<cam>`| String | Process only the specified camera stream |
+| `--max-frames=<N>` | Int | Limit maximum number of frames ingested per camera |
+| `--stride=<N>` | Int | Frame sampling stride (e.g. process every N-th frame) |
+| `--min-corners=<N>` | Int | Minimum number of detected corners required to consider a pattern detection |
+| `--scale=<factor>` | Float | Downsample input image frames by factor for faster processing |
+| `--save-detections` | — | Write annotated detection visualization images to the output directory |
+
 To see the available options, run `./calico-dec2023` with no arguments or `--help`.:
 
 ````

@@ -1,0 +1,68 @@
+# CALICO CUDA image — OpenCV 5.0 + Ceres 2.2 with CUDA
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS builder
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG OPENCV_VERSION=5.0.0
+ARG CERES_VERSION=2.2.0
+
+RUN apt-get update && apt-get install -y \
+    build-essential cmake git wget unzip ninja-build \
+    libgtk2.0-dev pkg-config libavcodec-dev libavformat-dev libswscale-dev \
+    libtbb2 libtbb-dev libjpeg-dev libpng-dev libtiff-dev \
+    libeigen3-dev liblapack-dev libatlas-base-dev libgomp1 \
+    libgoogle-glog-dev libgflags-dev libsuitesparse-dev libv4l-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+RUN wget -q -O opencv.zip https://github.com/opencv/opencv/archive/${OPENCV_VERSION}.zip && \
+    unzip -q opencv.zip && mkdir -p /build/opencv-${OPENCV_VERSION}/build
+WORKDIR /build/opencv-${OPENCV_VERSION}/build
+# OpenCV 5 CUDA modules live in opencv_contrib (cudev). CALICO GPU gray uses
+# apriltag_cuda.cu instead; Ceres still builds with USE_CUDA below.
+RUN cmake -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr/local \
+    -DBUILD_LIST=core,imgproc,imgcodecs,objdetect,calib3d,calib,geometry,highgui,videoio \
+    -DWITH_CUDA=OFF \
+    -DBUILD_TESTS=OFF -DBUILD_PERF_TESTS=OFF -DBUILD_EXAMPLES=OFF \
+    /build/opencv-${OPENCV_VERSION} && ninja install && ldconfig
+
+WORKDIR /build
+RUN git clone --depth 1 --branch ${CERES_VERSION} https://github.com/ceres-solver/ceres-solver.git && \
+    mkdir -p ceres-solver/build
+WORKDIR /build/ceres-solver/build
+RUN cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    -DUSE_CUDA=ON -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF && \
+    ninja install && ldconfig
+
+WORKDIR /build
+RUN git clone https://github.com/amy-tabb/apriltags-lib.git && \
+    find /build/apriltags-lib -name CMakeLists.txt -print0 | xargs -0 grep -l calib3d | xargs -r sed -i 's/calib3d/calib geometry/g' && \
+    sed -i '1i#include <opencv2/geometry.hpp>' /build/apriltags-lib/src/apriltags/src/Homography33.cc /build/apriltags-lib/src/apriltags/src/TagDetection.cc && \
+    mkdir -p apriltags-lib/build
+WORKDIR /build/apriltags-lib/build
+RUN cmake .. -DCMAKE_BUILD_TYPE=Release && make -j$(nproc) && make install && ldconfig
+
+WORKDIR /build
+RUN git clone --depth 1 https://github.com/AprilRobotics/apriltag.git && mkdir -p apriltag/build
+WORKDIR /build/apriltag/build
+RUN cmake .. -DCMAKE_BUILD_TYPE=Release && make -j$(nproc) && make install && ldconfig
+
+COPY src /calico/src
+WORKDIR /calico/build
+RUN cmake ../src -DCMAKE_BUILD_TYPE=Release -DENABLE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75 && make -j$(nproc) && ctest --output-on-failure
+
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+RUN apt-get update && apt-get install -y \
+    libgtk2.0-0 libtbb2 libgoogle-glog0v5 libsuitesparseconfig5 \
+    libcholmod3 liblapack3 libblas3 libatlas3-base libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /usr/local /usr/local
+COPY --from=builder /calico/build/calico-dec2023 /usr/local/bin/calico-dec2023
+COPY --from=builder /calico/build/compute-dec2023 /usr/local/bin/compute-dec2023
+COPY --from=builder /calico/build/calico_tests /usr/local/bin/calico_tests
+COPY src/detector_params.yml /opt/calico/detector_params.yml
+COPY src/detector_params.yml /src/detector_params.yml
+RUN ldconfig
+WORKDIR /docker_dir
+ENTRYPOINT ["calico-dec2023"]

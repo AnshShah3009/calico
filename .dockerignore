@@ -1,0 +1,6 @@
+.git
+build
+DATA
+results
+*.pdf
+src/test.txt

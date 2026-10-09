@@ -10,14 +10,16 @@
 #include "helper.hpp"
 #include "local-charuco.hpp"
 #include "helper-cali.hpp"
+#include "cuda-detect.hpp"
 
 
 CameraCali::CameraCali(const string& read_dir, PatternsCreated* P, int max_ext_images, int max_int_images_read,
-        int max_int_images_use){
+        int max_int_images_use, bool use_cuda_flag){
 
     pixel_width = 0;
     count_internal_ids_present = 0;
     start_time_this_camera = 0;
+    use_cuda = use_cuda_flag;
 
 
     P_class = P; // have a ptr to all the full information about the patterns.
@@ -191,7 +193,7 @@ void CameraCali::FindCornersCharuco(const string& write_dir, bool write_internal
         if ((max_internals_use == 0) || (internal_found_counter < max_internals_use) )
         {
             // detect markers and estimate pose
-            aruco::detectMarkers(images[i], P_class->dictionary, corners, ids, P_class->detectorParams, rejected);
+            CalicoDetectMarkers(images[i], P_class->dictionary, corners, ids, P_class->detectorParams, rejected);
 
             // draw results -- dealing with the possibility of more than one board per image.
             if(ids.size() > 0) {
@@ -207,10 +209,20 @@ void CameraCali::FindCornersCharuco(const string& write_dir, bool write_internal
                         // want this to be fresh each iter.
                         std::vector<cv::Point2f> charucoCorners;
                         std::vector<int> charucoIds;
+                        std::vector<std::vector<cv::Point2f> > board_corners;
+                        std::vector<int> board_ids;
+                        CalicoFilterMarkersForBoard(P_class->boards.at(p), corners, ids,
+                                board_corners, board_ids);
 
-
-                        cv::aruco::charucoLocal::interpolateCornersCharucoHomographyLocal(corners, ids, images.at(i),
+#if CALICO_ARUCO_MODERN
+                        CalicoInterpolateCharuco(images.at(i), P_class->boards.at(p),
+                                board_corners, board_ids, rejected, charucoCorners, charucoIds,
+                                P_class->detectorParams, cameraMatrix, distCoeffs);
+#else
+                        cv::aruco::charucoLocal::interpolateCornersCharucoHomographyLocal(
+                                board_corners, board_ids, images.at(i),
                                 P_class->boards.at(p), charucoCorners, charucoIds);
+#endif
 
 
                         collinear_markers = cv::aruco::charucoLocal::testCharucoCornersCollinear(P_class->boards.at(p),
@@ -219,8 +231,10 @@ void CameraCali::FindCornersCharuco(const string& write_dir, bool write_internal
                         assert(charucoCorners.size() >= charucoIds.size());
 
                         if (charucoIds.size() > 0 && collinear_markers){
-                            for (int j = 0, jn = charucoIds.size(); j < jn; j++){
-                                circle(images.at(i), charucoCorners.at(j), 10, b_color, 2);
+                            if (!no_debug_images) {
+                                for (int j = 0, jn = charucoIds.size(); j < jn; j++){
+                                    circle(images.at(i), charucoCorners.at(j), 10, b_color, 2);
+                                }
                             }
 
                             boards_detected.at(i).at(p) = false;
@@ -243,7 +257,9 @@ void CameraCali::FindCornersCharuco(const string& write_dir, bool write_internal
                             }
 
                             /// corners (2d) are linked to the Ids
-                            cv::aruco::drawDetectedCornersCharuco(images.at(i), charucoCorners, charucoIds, b_color);
+                            if (!no_debug_images) {
+                                cv::aruco::drawDetectedCornersCharuco(images.at(i), charucoCorners, charucoIds, b_color);
+                            }
 
                             // the corner closest to a particular marker is added.
                             for (int j  = 0, jn = charucoIds.size(); j < jn; j++){
@@ -358,11 +374,12 @@ void CameraCali::FindCornersApril(const string& write_dir, bool write_internal_i
 
         if ((max_internals_use == 0) || (internal_found_counter < max_internals_use) )
         {
-            // convert
-            cv::cvtColor(images[i], grayCopy, cv::COLOR_BGR2GRAY);
+            cv::Mat grayCopy;
+            calico_cuda::BgrToGray(images[i], grayCopy);
 
-            // detect markers and estimate pose
-            vector<AprilTags::TagDetection> detections = P_class->pp.ATObject.m_tagDetector->extractTags(grayCopy);
+            vector<AprilTags::TagDetection> detections;
+            DetectAprilTagGrid(grayCopy, P_class->pp.april_family,
+                    P_class->pp.ATObject.m_tagDetector, detections);
 
             // print out each detection
             cout << detections.size() << " ID tags detected for image " << i << endl;
@@ -389,32 +406,42 @@ void CameraCali::FindCornersApril(const string& write_dir, bool write_internal_i
                 }
 
                 for (uint j=0, dn = detections.size(); j < dn; j++) {
-                    detections[j].draw(images[i]);
-
                     pattern_index = detections[j].id/number_markers_per_pattern;
-                    b_color = P_class->Color(pattern_index);
+                    if (pattern_index < 0 || pattern_index >= number_patterns) {
+                        continue;
+                    }
+                    if (!no_debug_images) {
+                        detections[j].draw(images[i]);
+                        b_color = P_class->Color(pattern_index);
+                    }
 
                     for (uint k = 0; k < 4; k++){
-
                         Point2f p(detections[j].p[k].first, detections[j].p[k].second);
 
                         int grid_index =  ConvertAprilMarkerIdIndexToGridPointIndex(P_class->pp.squaresX, detections[j].id,
                                 k, P_class->pattern_start_marker_indexes[pattern_index]);
-                        circle(images[i], p, 3, b_color, 2);
-                        putText(images[i], ToString<int>(grid_index), p, FONT_HERSHEY_SIMPLEX, 0.4, b_color,1);
+                        if (grid_index < 0 || grid_index >= number_corners_per) {
+                            continue;
+                        }
+                        if (!no_debug_images) {
+                            circle(images[i], p, 3, b_color, 2);
+                            putText(images[i], ToString<int>(grid_index), p, FONT_HERSHEY_SIMPLEX, 0.4, b_color,1);
+                        }
 
                         global_index = number_corners_per*pattern_index + grid_index;
+                        if (global_index < 0 ||
+                                global_index >= int(points_present[i].size())) {
+                            continue;
+                        }
                         points_present[i][global_index] = true;
                         two_d_point_coordinates_dense[i](global_index, 0) = detections[j].p[k].first;
                         two_d_point_coordinates_dense[i](global_index, 1) = detections[j].p[k].second;
-
                     }
                 }
             }
         }
 
-        if (i < number_external_images_max || write_internal_images){
-
+        if (!no_debug_images && (i < number_external_images_max || write_internal_images)){
             filename = write_dir + "initial_detect" + ToString<int>(i) + ".png";
             imwrite(filename.c_str(), images[i]);
         }
@@ -468,10 +495,49 @@ void CameraCali::FindCorners(const string& write_dir, bool write_internal_images
     }
 }
 
+bool CameraCali::LoadIntrinsics(const string& filename){
+    ifstream in(filename.c_str());
+    if (!in.is_open()){
+        cout << "Could not open intrinsics file " << filename << endl;
+        return false;
+    }
+
+    string tag;
+    while (in >> tag){
+        if (tag == "internal_matrix"){
+            internal_parameters = Matrix3d::Identity();
+            for (int i = 0; i < 3; i++){
+                for (int j = 0; j < 3; j++){
+                    in >> internal_parameters(i, j);
+                }
+            }
+            cameraMatrix = cv::Mat::eye(3, 3, CV_64F);
+            for (int i = 0; i < 3; i++){
+                for (int j = 0; j < 3; j++){
+                    cameraMatrix.at<double>(i, j) = internal_parameters(i, j);
+                }
+            }
+        } else if (tag == "distortion_size"){
+            int size = 0;
+            in >> size;
+            distortion.resize(size);
+            distCoeffs = cv::Mat::zeros(size, 1, CV_64F);
+        } else if (tag == "distortion_vector"){
+            for (int i = 0; i < distortion.rows(); i++){
+                in >> distortion(i);
+                distCoeffs.at<double>(i, 0) = distortion(i);
+            }
+        }
+    }
+    in.close();
+    cout << "Loaded intrinsics from " << filename << endl;
+    return true;
+}
+
 // used 11/24
 void CameraCali::CalibrateBasic(float initial_focal_px, int zero_tangent_dist,
         int zero_k3, int fix_principal_point, const string& write_dir, int number_points_needed_to_count,
-        bool write_internal_images){
+        bool write_internal_images, const string& ingest_intrinsics_file){
 
 
     int number_corners_per = P_class->NumberCornersPerPattern();
@@ -593,6 +659,17 @@ void CameraCali::CalibrateBasic(float initial_focal_px, int zero_tangent_dist,
 
     int flags = cv::CALIB_USE_INTRINSIC_GUESS;
 
+    if (!ingest_intrinsics_file.empty()) {
+        if (!LoadIntrinsics(ingest_intrinsics_file)) {
+            exit(1);
+        }
+        // CALIB_FIX_INTRINSIC is a stereoCalibrate flag; pin K/dist explicitly.
+        // Use FIX_TANGENT_DIST (keep p1/p2) — ZERO_TANGENT_DIST would zero ingested tangentials.
+        flags = flags | cv::CALIB_FIX_PRINCIPAL_POINT | cv::CALIB_FIX_FOCAL_LENGTH
+                | cv::CALIB_FIX_ASPECT_RATIO | cv::CALIB_FIX_K1 | cv::CALIB_FIX_K2
+                | cv::CALIB_FIX_K3 | cv::CALIB_FIX_TANGENT_DIST;
+        cout << "Holding loaded intrinsics fixed while estimating board poses." << endl;
+    }
 
     if (zero_k3){
         flags = flags |  cv::CALIB_FIX_K3;
@@ -637,8 +714,10 @@ void CameraCali::CalibrateBasic(float initial_focal_px, int zero_tangent_dist,
     int correct_image;
     int correct_pattern;
 
-    for (int i = 0; i < number_images; i++){
-        reproject_cam_cali_images.push_back(images[i].clone());
+    if (!no_debug_images) {
+        for (int i = 0; i < number_images; i++){
+            reproject_cam_cali_images.push_back(images[i].clone());
+        }
     }
 
 
@@ -649,7 +728,7 @@ void CameraCali::CalibrateBasic(float initial_focal_px, int zero_tangent_dist,
 
         cv::projectPoints( cv::Mat(threed_points_wo_blanks[m]), rvecs[m], tvecs[m], cameraMatrix,  // project
                 distCoeffs, imagePoints2);
-        err = cv::norm(cv::Mat(twod_points_wo_blanks[m]), cv::Mat(imagePoints2), CV_L2);              // difference
+        err = cv::norm(cv::Mat(twod_points_wo_blanks[m]), cv::Mat(imagePoints2), cv::NORM_L2);
         reproj_error        += err*err;
 
         //reproj_image_points.push_back(imagePoints2);
@@ -657,8 +736,10 @@ void CameraCali::CalibrateBasic(float initial_focal_px, int zero_tangent_dist,
         correct_pattern = mapping_from_limited_to_full_patterns[m];
         reproj_error_per_board[correct_image][correct_pattern] = err*err;
 
-        for (int j = 0, jn = imagePoints2.size(); j < jn; j++){
-            line(reproject_cam_cali_images[correct_image], twod_points_wo_blanks[m][j],imagePoints2[j], Scalar(255, 0, 255), 2 );
+        if (!no_debug_images) {
+            for (int j = 0, jn = imagePoints2.size(); j < jn; j++){
+                line(reproject_cam_cali_images[correct_image], twod_points_wo_blanks[m][j],imagePoints2[j], Scalar(255, 0, 255), 2 );
+            }
         }
     }
 
@@ -697,32 +778,34 @@ void CameraCali::CalibrateBasic(float initial_focal_px, int zero_tangent_dist,
     cv::Mat view, rview, map1, map2;
     //	cv::Mat gray;
     string filename;
-    cv::initUndistortRectifyMap(cameraMatrix, distCoeffs, cv::Mat(),
-            cv::getOptimalNewCameraMatrix(cameraMatrix, distCoeffs, image_size, 1, image_size, 0),
-            image_size, CV_16SC2, map1, map2);
+    if (!no_debug_images) {
+        cv::initUndistortRectifyMap(cameraMatrix, distCoeffs, cv::Mat(),
+                cv::getOptimalNewCameraMatrix(cameraMatrix, distCoeffs, image_size, 1, image_size, 0),
+                image_size, CV_16SC2, map1, map2);
 
 
-    int number_to_write = 0;
+        int number_to_write = 0;
 
-    write_internal_images == false ? number_to_write = number_external_images_max: number_to_write = number_images;
+        write_internal_images == false ? number_to_write = number_external_images_max: number_to_write = number_images;
 
-    assert(int(reproject_cam_cali_images.size()) >= number_to_write);
+        assert(int(reproject_cam_cali_images.size()) >= number_to_write);
 
 #pragma omp parallel for private(filename)
-    for (int i = 0; i < number_to_write; i++){
-        Mat remapped;
+        for (int i = 0; i < number_to_write; i++){
+            Mat remapped;
 #pragma omp critical
-        {
-            if (i% 10 == 0){
-                cout << "Writing external " << i << endl;
+            {
+                if (i% 10 == 0){
+                    cout << "Writing external " << i << endl;
+                }
             }
-        }
-        cv::remap(reproject_cam_cali_images.at(i), remapped, map1, map2, cv::INTER_LINEAR);
+            cv::remap(reproject_cam_cali_images.at(i), remapped, map1, map2, cv::INTER_LINEAR);
 
-        filename  = write_dir + "/ext" + ToString<int>(i) + ".png";
+            filename  = write_dir + "/ext" + ToString<int>(i) + ".png";
 
-        {
-            cv::imwrite(filename.c_str(), remapped);
+            {
+                cv::imwrite(filename.c_str(), remapped);
+            }
         }
     }
 
@@ -927,7 +1010,7 @@ double CameraCali::ComputeReprojectionErrorOneImagePattern(const Matrix4d& ExtPa
 
     cv::projectPoints( cv::Mat(threed_points_wo_blanks), rvec, tvec, cameraMatrix,  // project
             distCoeffs, imagePoints2);
-    err = cv::norm(cv::Mat(twod_points_wo_blanks), cv::Mat(imagePoints2), CV_L2);              // difference
+    err = cv::norm(cv::Mat(twod_points_wo_blanks), cv::Mat(imagePoints2), cv::NORM_L2);
     reproj_error        += err*err;
 
 
