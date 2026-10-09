@@ -1,10 +1,12 @@
 # calico
 
-**Updated branch Dec 2023.**
+> [!NOTE]
+> **Updated by Ansh Shah**: Modernized for OpenCV 5.0, CUDA-accelerated target detection, Ceres robust loss functions (Huber, Cauchy), Stage 5 checkpointing and equation-level resume, MuJoCo ground-truth multi-camera verification suite, production exporters (ROS/ROS2 CameraInfo, Nerfstudio transforms.json, COLMAP), interactive 3D WebGL visualizer, and dual CPU/CUDA automated Docker CI/CD.
 
 CALICO: a method for calibrating asynchronous camera networks and/or multicamera systems, version **. December 2023 (Original release November 2019).
 
 Changelog: 
+- **Updated by Ansh Shah (2024-2026)**: Added OpenCV 5.0 compatibility shim, CUDA GPU acceleration, Ceres robust losses, Stage 5 checkpoint/resume, MuJoCo simulation benchmark, export tools (ROS, NeRF, COLMAP), and Docker Hub CI/CD.
 - code factoring and reorganization; added April Tags support. January 2024.
 - Docker image added March 2020.
 - Added incremental method as default, and another overhaul, April 2020.
@@ -29,19 +31,19 @@ Detailed documentation and visual walkthrough available in [docs/CALIBRATION_WAL
 ### 1. Multi-Camera Rig Setup
 A 3-camera surround system observing synchronized rigid ChArUco calibration targets in MuJoCo:
 
-![Multi-Camera Rig Setup](docs/images/rig_setup_charuco.png)
+![Multi-Camera Rig Setup](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/rig_setup_charuco.png)
 
 ### 2. Detection & Feature Refinement
 Sub-pixel corner detection across ChArUco targets and reprojection verification:
 
 | Board Layout | Detection & Corner Fit | Reprojected Overlay |
 | :---: | :---: | :---: |
-| ![Board Layout](docs/images/charuco_board_layout.png) | ![Detection](docs/images/charuco_detection.png) | ![Reprojection](docs/images/charuco_reprojection.png) |
+| ![Board Layout](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/charuco_board_layout.png) | ![Detection](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/charuco_detection.png) | ![Reprojection](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/charuco_reprojection.png) |
 
 ### 3. 3D Camera Network Reconstruction & Ceres Optimization
 Estimated 3D camera poses and board coordinate frames:
 
-![Calibrated Camera Network](docs/images/calibrated_camera_network_3d.png)
+![Calibrated Camera Network](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/calibrated_camera_network_3d.png)
 
 ### 4. Ground-Truth Validation Metrics
 Verified against synthetic ground truth in MuJoCo simulation:
