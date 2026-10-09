@@ -26,32 +26,32 @@ def load_calibration_data(cali_dir: Path) -> Dict[str, Any]:
 
 
 def rot_mat_to_quat_wxyz(R: List[List[float]]) -> List[float]:
-    """Convert 3x3 rotation matrix to quaternion [qw, qx, qy, qz]."""
+    """Convert 3x3 rotation matrix to quaternion [qw, qx, qy, qz] using Shepperd's algorithm."""
     m00, m01, m02 = R[0][0], R[0][1], R[0][2]
     m10, m11, m12 = R[1][0], R[1][1], R[1][2]
     m20, m21, m22 = R[2][0], R[2][1], R[2][2]
 
-    tr = m00 + m11 + m20
+    tr = m00 + m11 + m22
     if tr > 0:
         S = math.sqrt(tr + 1.0) * 2.0
         qw = 0.25 * S
         qx = (m21 - m12) / S
         qy = (m02 - m20) / S
         qz = (m10 - m01) / S
-    elif (m00 > m11) and (m00 > m20):
-        S = math.sqrt(1.0 + m00 - m11 - m20) * 2.0
+    elif (m00 > m11) and (m00 > m22):
+        S = math.sqrt(1.0 + m00 - m11 - m22) * 2.0
         qw = (m21 - m12) / S
         qx = 0.25 * S
         qy = (m01 + m10) / S
         qz = (m02 + m20) / S
-    elif m11 > m20:
-        S = math.sqrt(1.0 + m11 - m00 - m20) * 2.0
+    elif m11 > m22:
+        S = math.sqrt(1.0 + m11 - m00 - m22) * 2.0
         qw = (m02 - m20) / S
         qx = (m01 + m10) / S
         qy = 0.25 * S
         qz = (m12 + m21) / S
     else:
-        S = math.sqrt(1.0 + m20 - m00 - m11) * 2.0
+        S = math.sqrt(1.0 + m22 - m00 - m11) * 2.0
         qw = (m10 - m01) / S
         qx = (m02 + m20) / S
         qy = (m12 + m21) / S
@@ -269,43 +269,47 @@ def main() -> int:
         "-f",
         choices=["all", "ros", "nerfstudio", "colmap"],
         default="all",
-        help="Target export format (default: all)",
+        help="Export format target (default: all)",
     )
     parser.add_argument(
-        "--output-dir",
+        "--out",
         "-o",
         type=Path,
         default=None,
-        help="Output directory (default: <cali_dir>/exports)",
+        help="Output destination directory (default: <cali_dir>/exports)",
     )
 
     args = parser.parse_args()
-    cali_dir = args.cali_dir.resolve()
-    if not cali_dir.is_dir():
-        print(f"Error: Directory {cali_dir} does not exist.", file=sys.stderr)
+
+    if not args.cali_dir.exists():
+        print(f"Error: Directory does not exist: {args.cali_dir}", file=sys.stderr)
         return 1
 
-    out_dir = args.output_dir.resolve() if args.output_dir else cali_dir / "exports"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        data = load_calibration_data(args.cali_dir)
+    except Exception as e:
+        print(f"Error reading calibration data: {e}", file=sys.stderr)
+        return 1
 
-    print(f"Loading calibration from: {cali_dir}")
-    data = load_calibration_data(cali_dir)
-    num_cams = len(data.get("cameras", []))
-    print(f"Found {num_cams} camera(s).")
+    out_base = args.out or (args.cali_dir / "exports")
+    out_base.mkdir(parents=True, exist_ok=True)
+
+    print(f"Loading calibration from: {args.cali_dir}")
+    print(f"Found {len(data.get('cameras', []))} camera(s).")
 
     if args.format in ("all", "ros"):
-        ros_dir = out_dir / "ros"
-        files = export_ros(data, ros_dir)
-        print(f"[ROS] Exported {len(files)} CameraInfo YAML file(s) to {ros_dir}")
+        ros_dir = out_base / "ros"
+        res = export_ros(data, ros_dir)
+        print(f"[ROS] Exported {len(res)} CameraInfo YAML file(s) to {ros_dir}")
 
     if args.format in ("all", "nerfstudio"):
-        nerf_file = out_dir / "nerfstudio" / "transforms.json"
-        export_nerfstudio(data, nerf_file)
-        print(f"[NeRF] Exported transforms.json to {nerf_file}")
+        nerf_path = out_base / "nerfstudio" / "transforms.json"
+        export_nerfstudio(data, nerf_path)
+        print(f"[NeRF] Exported transforms.json to {nerf_path}")
 
     if args.format in ("all", "colmap"):
-        colmap_dir = out_dir / "colmap"
-        files = export_colmap(data, colmap_dir)
+        colmap_dir = out_base / "colmap"
+        res = export_colmap(data, colmap_dir)
         print(f"[COLMAP] Exported cameras.txt and images.txt to {colmap_dir}")
 
     print("Export complete.")

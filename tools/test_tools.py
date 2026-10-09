@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import subprocess
 import sys
 import tempfile
@@ -12,6 +13,55 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+
+from export_calibration import rot_mat_to_quat_wxyz
+
+
+class TestRotationMatrixToQuaternion(unittest.TestCase):
+    def test_identity(self):
+        R = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+        qw, qx, qy, qz = rot_mat_to_quat_wxyz(R)
+        self.assertAlmostEqual(qw, 1.0, places=5)
+        self.assertAlmostEqual(qx, 0.0, places=5)
+        self.assertAlmostEqual(qy, 0.0, places=5)
+        self.assertAlmostEqual(qz, 0.0, places=5)
+
+    def test_rot_x_180(self):
+        # 180 deg around X: diag is [1, -1, -1] -> m00 is max
+        R = [[1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, -1.0]]
+        qw, qx, qy, qz = rot_mat_to_quat_wxyz(R)
+        self.assertAlmostEqual(abs(qx), 1.0, places=5)
+        self.assertAlmostEqual(qw, 0.0, places=5)
+        self.assertAlmostEqual(qy, 0.0, places=5)
+        self.assertAlmostEqual(qz, 0.0, places=5)
+
+    def test_rot_y_180(self):
+        # 180 deg around Y: diag is [-1, 1, -1] -> m11 is max
+        R = [[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, -1.0]]
+        qw, qx, qy, qz = rot_mat_to_quat_wxyz(R)
+        self.assertAlmostEqual(abs(qy), 1.0, places=5)
+        self.assertAlmostEqual(qw, 0.0, places=5)
+        self.assertAlmostEqual(qx, 0.0, places=5)
+        self.assertAlmostEqual(qz, 0.0, places=5)
+
+    def test_rot_z_180(self):
+        # 180 deg around Z: diag is [-1, -1, 1] -> m22 is max
+        R = [[-1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 1.0]]
+        qw, qx, qy, qz = rot_mat_to_quat_wxyz(R)
+        self.assertAlmostEqual(abs(qz), 1.0, places=5)
+        self.assertAlmostEqual(qw, 0.0, places=5)
+        self.assertAlmostEqual(qx, 0.0, places=5)
+        self.assertAlmostEqual(qy, 0.0, places=5)
+
+    def test_rot_z_90(self):
+        # 90 deg around Z: trace = 1.0 > 0
+        R = [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]
+        qw, qx, qy, qz = rot_mat_to_quat_wxyz(R)
+        expected = math.sqrt(0.5)
+        self.assertAlmostEqual(qw, expected, places=5)
+        self.assertAlmostEqual(qx, 0.0, places=5)
+        self.assertAlmostEqual(qy, 0.0, places=5)
+        self.assertAlmostEqual(qz, expected, places=5)
 
 
 class TestExportCalibration(unittest.TestCase):

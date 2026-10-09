@@ -60,6 +60,10 @@ jobs:
         run: |
           docker compose run --rm calico-cpu --help
 
+      - name: Run C++ Unit Tests in Container
+        run: |
+          docker compose run --rm --entrypoint calico_tests calico-cpu
+
   publish-docker-images:
     name: Build & Push Docker Hub Images
     runs-on: ubuntu-22.04
@@ -79,6 +83,25 @@ jobs:
             echo "::notice::Docker Hub credentials (DOCKERHUB_USERNAME, DOCKERHUB_TOKEN) are not set. Add them to repository secrets to publish images."
           fi
 
+      - name: Compute Docker Image Tags
+        id: meta
+        if: steps.check_creds.outputs.configured == 'true'
+        run: |
+          DOCKER_USER="${{ secrets.DOCKERHUB_USERNAME }}"
+          CPU_TAGS="${DOCKER_USER}/calico:cpu\n${DOCKER_USER}/calico:latest"
+          CUDA_TAGS="${DOCKER_USER}/calico:cuda"
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG_NAME="${{ github.ref_name }}"
+            CPU_TAGS="${CPU_TAGS}\n${DOCKER_USER}/calico:${TAG_NAME}\n${DOCKER_USER}/calico:${TAG_NAME}-cpu"
+            CUDA_TAGS="${CUDA_TAGS}\n${DOCKER_USER}/calico:${TAG_NAME}-cuda"
+          fi
+          echo "cpu_tags<<EOF" >> "$GITHUB_OUTPUT"
+          echo -e "$CPU_TAGS" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "cuda_tags<<EOF" >> "$GITHUB_OUTPUT"
+          echo -e "$CUDA_TAGS" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         if: steps.check_creds.outputs.configured == 'true'
         uses: docker/setup-buildx-action@v3
@@ -90,16 +113,16 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build & Push calico:cpu (and :latest)
+      - name: Build & Push calico:cpu
         if: steps.check_creds.outputs.configured == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile.cpu
           push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/calico:cpu
-            ${{ secrets.DOCKERHUB_USERNAME }}/calico:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: ${{ steps.meta.outputs.cpu_tags }}
 
       - name: Build & Push calico:cuda
         if: steps.check_creds.outputs.configured == 'true'
@@ -108,5 +131,6 @@ jobs:
           context: .
           file: ./Dockerfile.cuda
           push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/calico:cuda
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: ${{ steps.meta.outputs.cuda_tags }}
