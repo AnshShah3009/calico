@@ -1,12 +1,15 @@
 # calico
 
 > [!NOTE]
-> **Updated by Ansh Shah**: Modernized for OpenCV 5.0, CUDA-accelerated target detection, Ceres robust loss functions (Huber, Cauchy), Stage 5 checkpointing and equation-level resume, MuJoCo ground-truth multi-camera verification suite, production exporters (ROS/ROS2 CameraInfo, Nerfstudio transforms.json, COLMAP), interactive 3D WebGL visualizer, and dual CPU/CUDA automated Docker CI/CD.
+> **Ansh Shah's Fork**: Enhanced with 21 Quality-of-Life (QoL) flags, structured JSON export (`calibration.json`), solver checkpointing, and execution validation.
+>
+> 🚀 **OpenCV 5.0, CUDA Acceleration & CI/CD**:
+> For the modernized release featuring OpenCV 5.0 compatibility, GPU-accelerated detection, Ceres robust losses (Huber/Cauchy), Stage 5 resume, and automated dual CPU/CUDA Docker builds, see branch [`feat/setup-opencv5-cuda`](https://github.com/AnshShah3009/calico/tree/feat/setup-opencv5-cuda) (or [Pull Request #1](https://github.com/AnshShah3009/calico/pull/1)).
 
 CALICO: a method for calibrating asynchronous camera networks and/or multicamera systems, version **. December 2023 (Original release November 2019).
 
 Changelog: 
-- **Updated by Ansh Shah (2024-2026)**: Added OpenCV 5.0 compatibility shim, CUDA GPU acceleration, Ceres robust losses, Stage 5 checkpoint/resume, MuJoCo simulation benchmark, export tools (ROS, NeRF, COLMAP), and Docker Hub CI/CD.
+- **Updated by Ansh Shah**: Added 21 Quality-of-Life (QoL) CLI flags, structured JSON output (`calibration.json`), dry-run validation, and checkpoint resume. (OpenCV 5 & CUDA in `feat/setup-opencv5-cuda`).
 - code factoring and reorganization; added April Tags support. January 2024.
 - Docker image added March 2020.
 - Added incremental method as default, and another overhaul, April 2020.
@@ -26,7 +29,7 @@ Roadmap
 
 ## Multi-Camera Rig Calibration & Verification Showcase
 
-Detailed documentation and visual walkthrough available in [docs/CALIBRATION_WALKTHROUGH.md](docs/CALIBRATION_WALKTHROUGH.md).
+Detailed documentation and visual walkthrough available in [CALIBRATION_WALKTHROUGH.md](https://github.com/AnshShah3009/calico/blob/feat/setup-opencv5-cuda/docs/CALIBRATION_WALKTHROUGH.md).
 
 ### 1. Multi-Camera Rig Setup
 A 3-camera surround system observing synchronized rigid ChArUco calibration targets in MuJoCo:
@@ -242,6 +245,37 @@ where `/usr/local/opencv41/lib/cmake/opencv4/` is the directory containing `Open
 7. I highly suggest that you download at least one test dataset from [http://doi.org/10.5281/zenodo.3520866](http://doi.org/10.5281/zenodo.3520866).  These datasets are in the format needed for CALICO, and you can ensure that everything is correctly configured on your system.
 
 ## Running
+
+### Quality-of-Life Flags (21 total added in this fork)
+
+| Flag | Type | Description |
+| :--- | :--- | :--- |
+| `--version` | flag | Print version and exit |
+| `--dry-run` | flag | Validate input without calibrating |
+| `--quiet` | flag | Suppress all calibration stdout |
+| `--summary` | flag | Print brief summary after calibration |
+| `--progress` | flag | Show stage 4/5 progress percentage |
+| `--no-progress` | flag | Disable progress even with `--progress` |
+| `--timestamp` | flag | Append timestamp to output dir |
+| `--no-overwrite` | flag | Refuse if output dir has results |
+| `--force` | flag | Override `--no-overwrite` |
+| `--checkpoint` | flag | Periodic solver state checkpointing |
+| `--resume=DIR` | arg | Resume from checkpoint directory |
+| `--auto-rename` | flag | Add input basename to output dir |
+| `--json` | flag | Write `calibration.json` output |
+| `--config=FILE` | arg | Read options from config file |
+| `--camera-color=STR` | arg | Per-camera PLY colors (`R,G,B|R,G,B|...`) |
+| `--pattern-color=STR` | arg | Per-pattern PLY colors |
+| `--camera-names=STR` | arg | Comma-separated camera name overrides |
+| `--exclude-camera=STR` | arg | Comma-separated cameras to exclude |
+| `--focus-camera=STR` | arg | Only calibrate listed cameras (inverse of exclude) |
+| `--max-images=INT` | arg | Unified image cap for all cameras |
+| `--min-boards=INT` | arg | Auto-exclude cameras detecting fewer than N boards |
+| `--num-threads=N` | arg | Thread count (default: OMP max) |
+| `--no-visualization` | flag | Skip PLY meshes + equation PNGs |
+| `--no-debug-images` | flag | Skip per-image detection PNGs |
+| `--detection-summary` | flag | Print board visibility table per camera |
+| `--per-camera-mse` | flag | Append per-camera reprojection MSE to output |
 
 To see the available options, run `./calico-dec2023` with no arguments or `--help`.:
 
