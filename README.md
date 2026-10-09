@@ -1,12 +1,16 @@
 # calico
 
 > [!NOTE]
-> **Updated by Ansh Shah**: Modernized for OpenCV 5.0, CUDA-accelerated target detection, Ceres robust loss functions (Huber, Cauchy), Stage 5 checkpointing and equation-level resume, MuJoCo ground-truth multi-camera verification suite, production exporters (ROS/ROS2 CameraInfo, Nerfstudio transforms.json, COLMAP), interactive 3D WebGL visualizer, and dual CPU/CUDA automated Docker CI/CD.
+> **Branch: `updated-release-dec-2023` (Upstream Release Dec 2023 - March 2024)**
+> This branch tracks upstream CALICO's official December 2023 / March 2024 release featuring AprilTag grid calibration and Zenodo dataset integrations.
+>
+> 📌 **Looking for Other Branches?**
+> - **[`main`](https://github.com/AnshShah3009/calico/tree/main)**: Primary development branch with 21 Quality-of-Life (QoL) CLI flags, structured JSON export, and checkpoint resume.
+> - **[`feat/setup-opencv5-cuda`](https://github.com/AnshShah3009/calico/tree/feat/setup-opencv5-cuda)** ([PR #1](https://github.com/AnshShah3009/calico/pull/1)): Modernized OpenCV 5.0 compatibility, CUDA GPU-accelerated target detection, Ceres robust losses (Huber/Cauchy), MuJoCo ground-truth verification, Python exporters, and automated Docker Hub CI/CD.
 
 CALICO: a method for calibrating asynchronous camera networks and/or multicamera systems, version **. December 2023 (Original release November 2019).
 
 Changelog: 
-- **Updated by Ansh Shah (2024-2026)**: Added OpenCV 5.0 compatibility shim, CUDA GPU acceleration, Ceres robust losses, Stage 5 checkpoint/resume, MuJoCo simulation benchmark, export tools (ROS, NeRF, COLMAP), and Docker Hub CI/CD.
 - code factoring and reorganization; added April Tags support. January 2024.
 - Docker image added March 2020.
 - Added incremental method as default, and another overhaul, April 2020.
@@ -23,38 +27,6 @@ Roadmap
 - [Input format](#input-format)
 - [Output format](#output-format)
 	
-
-## Multi-Camera Rig Calibration & Verification Showcase
-
-Detailed documentation and visual walkthrough available in [docs/CALIBRATION_WALKTHROUGH.md](docs/CALIBRATION_WALKTHROUGH.md).
-
-### 1. Multi-Camera Rig Setup
-A 3-camera surround system observing synchronized rigid ChArUco calibration targets in MuJoCo:
-
-![Multi-Camera Rig Setup](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/rig_setup_charuco.png)
-
-### 2. Detection & Feature Refinement
-Sub-pixel corner detection across ChArUco targets and reprojection verification:
-
-| Board Layout | Detection & Corner Fit | Reprojected Overlay |
-| :---: | :---: | :---: |
-| ![Board Layout](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/charuco_board_layout.png) | ![Detection](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/charuco_detection.png) | ![Reprojection](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/charuco_reprojection.png) |
-
-### 3. 3D Camera Network Reconstruction & Ceres Optimization
-Estimated 3D camera poses and board coordinate frames:
-
-![Calibrated Camera Network](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/calibrated_camera_network_3d.png)
-
-### 4. Ground-Truth Validation Metrics
-Verified against synthetic ground truth in MuJoCo simulation:
-
-| Metric | Ground Truth | Estimated | Error | Threshold | Verdict |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Intrinsics (fx, fy, cx, cy)** | 799.92 px | 799.92 px | **0.00 px** | <= 1.0 px | **PASS** |
-| **Rotation Error (max)** | — | — | **1.45 deg** | <= 3.0 deg | **PASS** |
-| **Translation Error (max)** | — | — | **20.56 mm** | <= 25.0 mm | **PASS** |
-| **Reprojection RMS Error** | — | — | **0.21 - 0.28 px** | <= 1.50 px | **PASS** |
-
 # Contact 
 
 Comments/Bugs/Problems: amy.tabb@usda.gov, or open an issue on Github.
@@ -62,19 +34,19 @@ Comments/Bugs/Problems: amy.tabb@usda.gov, or open an issue on Github.
 # Underlying ideas; how and when to cite this work
 
 This README file is produced by Amy Tabb as a companion to a paper:
-	[Multi-camera calibration with pattern rigs, including for non-overlapping cameras: CALICO](https://arxiv.org/abs/1903.06811)
+	Multi-camera calibration with pattern rigs, including for non-overlapping cameras: CALICO
 
-
+**TODO** edit with the new version.
 ````latex
-@article{tabb_calibration_2024
-	title = {Multi-camera calibration with pattern rigs, including for non-overlapping cameras: CALICO},
+@article{tabb_calibration_2019,
+	title = {Calibration of Asynchronous Camera Networks: CALICO},
 	url = {http://arxiv.org/abs/1903.06811},
 	abstract = {},
-	urldate = {2024-03-27},
+	urldate = {2019-11-14},
 	journal = {arXiv:1903.06811 [cs]},
 	author = {Tabb, Amy and Medeiros, Henry and Feldmann, Mitchell J. and Santos, Thiago T.},
-	month = mar,
-	year = {2024},
+	month = nov,
+	year = {2019},
 	note = {arXiv: 1903.06811},
 	keywords = {Computer Science - Computer Vision and Pattern Recognition}
 }
@@ -82,62 +54,41 @@ This README file is produced by Amy Tabb as a companion to a paper:
 
 Dataset and/or code:
 
-Tabb, Amy, & Feldmann, Mitchell J. (2023). Data and Code from: Calibration of Asynchronous Camera Networks: CALICO (Version v2) [Data set]. Zenodo. [http://doi.org/10.5281/zenodo.3520865](http://doi.org/10.5281/zenodo.3520865)
+Tabb, Amy, & Feldmann, Mitchell. J. (2023). Data and Code from: Multi-camera calibration with pattern rigs, including for non-overlapping cameras: CALICO [Data set]. Zenodo. [http://doi.org/0.5281/zenodo.3520865](http://doi.org/0.5281/zenodo.3520865)
 
+**TODO update**
 ````latex
-@dataset{tabb_amy_2023_3520865,
+@dataset{tabb_amy_2019_3520866,
   author       = {Tabb, Amy and Feldmann, Mitchell J.},
   title        = {Data and Code from: Calibration of Asynchronous 
                    Camera Networks: CALICO},
   month        = nov,
-  year         = 2023,
+  year         = 2019,
   publisher    = {Zenodo},
-  version      = {v1},
-  doi          = {10.5281/zenodo.3520865},
-  url          = {https://doi.org/10.5281/zenodo.3520865}
+  version      = {1.0},
+  doi          = {10.5281/zenodo.3520866},
+  url          = {https://doi.org/10.5281/zenodo.3520866}
 }
 ````
 
-
-
-If you use this code in project that results in a publication, please cite at a minimum the paper above, and best practice would be to cite the paper and the dataset.  Otherwise, conditions include those of the [MIT license](https://github.com/amy-tabb/calico/blob/master/license.md) concerning the copyright and license notice.  However, no guarantees are expressed or implied.
+If you use this code in project that results in a publication, please cite at a minimum the paper above, and best practice would be to cite the paper and the dataset.  Otherwise, there are no restrictions in your use of this code.  However, no guarantees are expressed or implied.
 
 ## Docker release
+
+Work in progress.
 
 
 ### Install Docker
 
 [Install Docker](https://docs.docker.com/install/), if you haven't already.  I endorse uninstalling old versions if you have them floating around.
 
-### Pre-built Docker Images (CPU & GPU/CUDA)
-
-Both CPU and GPU-accelerated Docker images are supported:
-
-| Image Flavor | Docker Tag | Hardware Requirements |
-| :--- | :--- | :--- |
-| **CPU** | `<username>/calico:cpu` (or `:latest`) | x86_64 CPU |
-| **CUDA (GPU)** | `<username>/calico:cuda` | NVIDIA GPU + NVIDIA Container Toolkit |
-
-#### Automated CI/CD Publishing to Docker Hub
-To automatically build and push both images on releases and pushes to `main`:
-1. In your GitHub repository, navigate to **Settings** > **Secrets and variables** > **Actions**.
-2. Add the following repository secrets:
-   - `DOCKERHUB_USERNAME`: Your Docker Hub username.
-   - `DOCKERHUB_TOKEN`: A Docker Hub Personal Access Token (PAT) with `Read & Write` permissions.
-3. Once configured, GitHub Actions will automatically build, tag, and publish both `calico:cpu` and `calico:cuda` images on release tags or manual workflow dispatch.
-
-#### Manual Push
-Alternatively, you can build and push both images from your terminal using:
-```bash
-./tools/push_docker.sh <your-dockerhub-username> [version-tag]
-```
-
 ### Pull the image
-
+14212
+**TODO work on this**
 The image for CALICO is : [amytabb/calico-dec2023](https://hub.docker.com/r/amytabb/calico-dec2023).
 
 ```bash
-docker pull amytabb/calico-dec2023:mar2024
+docker pull amytabb/calico
 ```
 
 ### Run the image
@@ -285,7 +236,7 @@ All other arguments are ignored.
 ````
 
 Assuming you've downloaded some of the datasets from Zenodo [http://doi.org/10.5281/zenodo.3520866](http://doi.org/10.5281/zenodo.3520866), the arguments used to run a sampling is here:
-
+**todo**
 
 sim1:  `./calico-dec2023 --charuco --calibrate --k=8 --perc-ae=0.2 --perc-rp=0.5 --num-threads 24 --input=/home/username/data-calico/sim1/base/ --output=/home/username/data-calico/sim1/result/ --camera-size=40 --track-size=0 --num-pattern=10`
 
