@@ -160,6 +160,19 @@ class TestExportCalibration(unittest.TestCase):
         ]
         self.assertEqual(len(cam_lines), 2)
 
+        # OpenCV FileStorage
+        self.assertTrue((out_dir / "opencv" / "cam0_opencv.yaml").exists())
+        self.assertTrue((out_dir / "opencv" / "cam1_opencv.yaml").exists())
+        fs = cv2.FileStorage(str(out_dir / "opencv" / "cam0_opencv.yaml"), cv2.FILE_STORAGE_READ)
+        K = fs.getNode("camera_matrix").mat()
+        D = fs.getNode("distortion_coefficients").mat()
+        T = fs.getNode("transform_world_camera").mat()
+        fs.release()
+        self.assertEqual(K.shape, (3, 3))
+        self.assertEqual(D.shape, (5, 1))
+        self.assertEqual(T.shape, (4, 4))
+        self.assertAlmostEqual(K[0, 0], 800.0)
+
 
 class TestIngestVideo(unittest.TestCase):
     def setUp(self):
@@ -262,6 +275,84 @@ class TestVisualizeCalibration(unittest.TestCase):
 
 
 
+
+class TestValidateDataset(unittest.TestCase):
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp_dir.name)
+
+        # Create 2 camera folders with 2 valid images each
+        for cam in ["cam0", "cam1"]:
+            cam_dir = self.root / "data" / cam / "external"
+            cam_dir.mkdir(parents=True, exist_ok=True)
+            for i in range(2):
+                img = np.zeros((100, 100, 3), dtype=np.uint8)
+                cv2.imwrite(str(cam_dir / f"img_{i:04d}.png"), img)
+
+        # Create valid network yaml
+        yaml_content = """%YAML:1.0
+type: charuco
+squaresX: 7
+squaresY: 9
+squareLength: 40
+markerLength: 20
+margins: 10
+numberBoards: 1
+arcCode: 10
+"""
+        (self.root / "network_specification_file.yaml").write_text(yaml_content)
+        (self.root / "pattern_square_mm0.txt").write_text("squareLength_mm 40.0\n")
+
+    def tearDown(self):
+        self.tmp_dir.cleanup()
+
+    def test_valid_dataset(self):
+        from validate_dataset import validate_dataset
+        res = validate_dataset(self.root)
+        self.assertTrue(res["valid"])
+        self.assertEqual(len(res["errors"]), 0)
+        self.assertEqual(len(res["summary"]["cameras"]), 2)
+
+    def test_invalid_marker_length(self):
+        from validate_dataset import validate_dataset
+        bad_yaml = """%YAML:1.0
+type: charuco
+squaresX: 7
+squaresY: 9
+squareLength: 40
+markerLength: 45
+numberBoards: 1
+arcCode: 10
+"""
+        (self.root / "network_specification_file.yaml").write_text(bad_yaml)
+        res = validate_dataset(self.root)
+        self.assertFalse(res["valid"])
+        self.assertTrue(any("markerLength" in e for e in res["errors"]))
+
+    def test_dictionary_overflow(self):
+        from validate_dataset import validate_dataset
+        # DICT_4X4_50 has 50 markers; 11x11 board has 60 markers per board -> overflow!
+        bad_yaml = """%YAML:1.0
+type: charuco
+squaresX: 11
+squaresY: 11
+squareLength: 40
+markerLength: 20
+numberBoards: 1
+arcCode: 0
+"""
+        (self.root / "network_specification_file.yaml").write_text(bad_yaml)
+        res = validate_dataset(self.root)
+        self.assertFalse(res["valid"])
+        self.assertTrue(any("overflow" in e.lower() for e in res["errors"]))
+
+    def test_missing_scale_file(self):
+        from validate_dataset import validate_dataset
+        (self.root / "pattern_square_mm0.txt").unlink()
+        res = validate_dataset(self.root)
+        self.assertFalse(res["valid"])
+        self.assertTrue(any("pattern_square_mm0.txt" in e for e in res["errors"]))
+
 class TestCalicoGUI(unittest.TestCase):
     def setUp(self):
         self.tmp_dir = tempfile.TemporaryDirectory()
@@ -361,6 +452,24 @@ class TestCalicoGUI(unittest.TestCase):
                 self.assertEqual(resp.status, 200)
                 exp_res = json.loads(resp.read().decode("utf-8"))
                 self.assertEqual(exp_res.get("returncode"), 0)
+            # 6. Test GET /api/validate
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/validate?path={self.root}") as resp:
+                self.assertEqual(resp.status, 200)
+                val_res = json.loads(resp.read().decode("utf-8"))
+                self.assertIn("valid", val_res)
+
+            # 7. Test POST /api/export with format: opencv
+            req_cv = urllib.request.Request(
+                f"http://127.0.0.1:{port}/api/export",
+                data=json.dumps({"cali_dir": str(self.root), "format": "opencv"}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+            with urllib.request.urlopen(req_cv) as resp:
+                self.assertEqual(resp.status, 200)
+                exp_res = json.loads(resp.read().decode("utf-8"))
+                self.assertEqual(exp_res.get("returncode"), 0)
+
         finally:
             server.shutdown()
             server.server_close()

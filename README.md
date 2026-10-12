@@ -557,28 +557,41 @@ To make multi-camera calibration intuitive without memorizing CLI flags or forma
 Open **`http://localhost:8080`** in your browser.
 
 #### Studio Capabilities:
-- **⚡ Calibration Wizard**:
+- **⚡ Calibration Wizard & Configuration Presets**:
+  - One-click configuration presets: Standard ChArUco, AprilTag Grid (GPU), High-Robustness, and Quick Draft.
   - Automatically discovers datasets in your workspace.
   - Interactive controls for pattern geometry (ChArUco vs AprilTag, dimensions, dictionaries).
   - One-click optimization settings: Huber/Cauchy robust Ceres loss, GPU CUDA acceleration toggle, worker threads, and periodic checkpointing.
   - Live console terminal with real-time solver log streaming and progress percentages.
+- **🔍 Pre-Flight Dataset Validation**:
+  - Automatically inspects multi-camera datasets in seconds before solving.
+  - Checks camera frame synchronization, image dimensions, markerLength vs squareLength constraints, and ArUco/AprilTag dictionary capacity overflow.
 - **🌐 Interactive 3D Inspector**:
   - Embedded Three.js WebGL viewport showing calibrated camera pyramids, optical axes, and target boards in 3D world space.
   - **Raycaster Selection**: Click any camera frustum in 3D space to inspect its intrinsics ($f_x, f_y, c_x, c_y$), distortion coefficients ($k_1, k_2, p_1, p_2, k_3$), and reprojection RMS error.
   - **Look Through Camera**: First-person perspective mode that positions the view at any camera's focal point.
   - Dynamic pairwise baseline distance calculations (mm/cm).
 - **📦 One-Click Export Hub**:
+  - Direct export to standard **OpenCV `cv::FileStorage`** YAML format with camera matrices, distortion coefficients, and world-camera extrinsics for seamless C++ and Python integration.
   - Direct export to **ROS / ROS2** `CameraInfo` YAML files.
   - Direct export to **Nerfstudio** `transforms.json` for NeRF and 3D Gaussian Splatting.
   - Direct export to **COLMAP** `cameras.txt` and `images.txt` for photogrammetry.
 
-### 2. Standalone 3D Calibration Report
+### 2. Pre-Flight Dataset Validation CLI
+Quickly analyze and validate input datasets from the terminal:
+```bash
+python3 tools/validate_dataset.py DATA/mult-3-base/
+# Or output machine-readable JSON:
+python3 tools/validate_dataset.py DATA/mult-3-base/ --json
+```
+
+### 3. Standalone 3D Calibration Report
 Generate a standalone, shareable interactive 3D HTML dashboard for any calibration output:
 ```bash
 python3 tools/visualize_calibration.py results/april-gpu/ -o report.html
 ```
 
-### 3. Automated Test Suite
+### 4. Automated Test Suite
 Verify all GUI endpoints, export formats, video ingest pipelines, and math routines:
 ```bash
 python3 tools/test_tools.py
@@ -586,6 +599,4 @@ python3 tools/test_tools.py
 
 #### TODO
 - write documentation for the ground truth comparison function.
-- Check for bad input : the number of markers specified in the files is greater than the size of the aruco dictionary.
-- Check for bad input : alert if markerLength is > squareLength
-Verbose and write: Add another flag for writing output, as lots of images are currently written.
+- Verbose and write: Add another flag for writing output, as lots of images are currently written.

@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 """CALICO Studio: Zero-dependency Interactive Web GUI for CALICO Calibration.
 
@@ -29,6 +30,15 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+try:
+    from tools.validate_dataset import validate_dataset
+except ImportError:
+    try:
+        from validate_dataset import validate_dataset
+    except ImportError:
+        validate_dataset = None
+
 
 WORKSPACE_DIR = Path(__file__).resolve().parent.parent
 
@@ -619,6 +629,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     </div>
     <nav>
       <button class="nav-btn active" onclick="switchTab('wizard')">⚡ Calibration Wizard</button>
+      <button class="nav-btn" onclick="switchTab('validate')">🔍 Pre-Flight Check</button>
       <button class="nav-btn" onclick="switchTab('visualizer')">🌐 3D Visualizer & Inspector</button>
       <button class="nav-btn" onclick="switchTab('export')">📦 Export Hub</button>
     </nav>
@@ -630,10 +641,24 @@ STUDIO_HTML = """<!DOCTYPE html>
       <div class="wizard-layout">
         <div class="config-panel">
           <div>
+            <div class="form-group" style="margin-bottom:14px; background:rgba(56,189,248,0.06); padding:10px; border-radius:6px; border:1px solid var(--border);">
+              <label style="color:var(--primary); font-weight:700;">⚡ Configuration Preset</label>
+              <select id="config-preset" onchange="applyPreset()" style="margin-top:4px;">
+                <option value="custom">Custom Configuration</option>
+                <option value="charuco_std">ChArUco Standard (7x9, 45mm, Huber, 8 threads)</option>
+                <option value="april_cuda">AprilTag Grid (tag36h11, 80mm, CUDA GPU)</option>
+                <option value="high_robust">High-Robustness Rig (Cauchy Loss, 1.5 scale)</option>
+                <option value="quick_test">Quick Draft (Stride 2, Huber Loss)</option>
+              </select>
+            </div>
+
             <div class="section-title">1. Dataset & Pattern</div>
             <div class="form-group">
-              <label>Select Dataset / Results</label>
-              <select id="dataset-select" onchange="onDatasetChange()">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <label>Select Dataset / Results</label>
+                <button class="btn" style="padding:2px 8px; font-size:0.72rem; color:var(--primary);" onclick="runPreflightCheck()">🔍 Pre-Flight Check</button>
+              </div>
+              <select id="dataset-select" onchange="onDatasetChange()" style="margin-top:4px;">
                 <option value="">-- Choose Workspace Dataset --</option>
               </select>
             </div>
@@ -734,6 +759,24 @@ STUDIO_HTML = """<!DOCTYPE html>
       </div>
     </div>
 
+        <!-- TAB: PRE-FLIGHT VALIDATION -->
+    <div id="tab-validate" class="tab-pane">
+      <div style="padding: 24px; max-width: 960px; margin: 0 auto; overflow-y:auto; width:100%;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <div>
+            <h2 style="font-size:1.3rem; color:var(--primary); margin-bottom:4px;">Pre-Flight Dataset Validation</h2>
+            <p style="color:var(--text-muted); font-size:0.85rem;">Analyze frame synchronicity, resolutions, pattern geometry, and dictionary limits before running CALICO.</p>
+          </div>
+          <button class="btn btn-primary" onclick="runPreflightCheck()">Run Check Now</button>
+        </div>
+        <div id="validation-report-card">
+          <div class="card" style="text-align:center; padding:32px; color:var(--text-muted);">
+            Select a dataset in the Calibration Wizard and click "Run Check Now" to analyze the dataset.
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- TAB 2: 3D VISUALIZER & INSPECTOR -->
     <div id="tab-visualizer" class="tab-pane">
       <div class="visualizer-layout">
@@ -775,7 +818,12 @@ STUDIO_HTML = """<!DOCTYPE html>
         <h2 style="font-size:1.3rem; margin-bottom:8px; color:var(--primary);">Export Multi-Camera Calibration</h2>
         <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:24px;">Export calibrated intrinsics, distortion matrices, and camera-to-world poses into standard robotics and vision formats.</p>
 
-        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:16px;">
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+          <div class="card">
+            <h3>OpenCV cv::FileStorage</h3>
+            <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:14px;">Standard cv::FileStorage YAML format with camera_matrix, distortion_coefficients, and extrinsics for C++ & Python.</p>
+            <button class="btn btn-primary" style="width:100%;" onclick="runExport('opencv')">Export OpenCV YAML</button>
+          </div>
           <div class="card">
             <h3>ROS / ROS2</h3>
             <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:14px;">CameraInfo YAML files for each camera with K, D, R, P matrices.</p>
@@ -783,12 +831,12 @@ STUDIO_HTML = """<!DOCTYPE html>
           </div>
           <div class="card">
             <h3>Nerfstudio</h3>
-            <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:14px;">transforms.json format for NeRF, Gaussian Splatting, and instant-ngp.</p>
+            <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:14px;">transforms.json format for NeRF, 3D Gaussian Splatting, and instant-ngp.</p>
             <button class="btn btn-primary" style="width:100%;" onclick="runExport('nerfstudio')">Export transforms.json</button>
           </div>
           <div class="card">
             <h3>COLMAP</h3>
-            <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:14px;">cameras.txt, images.txt, points3D.txt for photogrammetry pipelines.</p>
+            <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:14px;">cameras.txt, images.txt for structure-from-motion pipelines.</p>
             <button class="btn btn-primary" style="width:100%;" onclick="runExport('colmap')">Export COLMAP</button>
           </div>
         </div>
@@ -808,13 +856,126 @@ STUDIO_HTML = """<!DOCTYPE html>
 
     // Switch Tabs
     function switchTab(tabId) {
-      document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll(".nav-btn").forEach(b => {
+        b.classList.remove("active");
+        if (b.getAttribute("onclick") && b.getAttribute("onclick").includes("'" + tabId + "'")) {
+          b.classList.add("active");
+        }
+      });
       document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
-      event.target.classList.add("active");
-      document.getElementById("tab-" + tabId).classList.add("active");
+      const targetPane = document.getElementById("tab-" + tabId);
+      if (targetPane) targetPane.classList.add("active");
       if (tabId === 'visualizer') {
         setTimeout(onResizeViewport, 50);
       }
+    }
+
+    
+    // Preset Application
+    function applyPreset() {
+      const preset = document.getElementById("config-preset").value;
+      if (preset === "charuco_std") {
+        document.getElementById("pattern-type").value = "charuco";
+        document.getElementById("tag-family").value = "tag36h11";
+        document.getElementById("square-mm").value = "45.0";
+        document.getElementById("marker-mm").value = "22.0";
+        document.getElementById("loss-type").value = "huber";
+        document.getElementById("loss-scale").value = "1.0";
+        document.getElementById("threads").value = "8";
+        document.getElementById("stride").value = "1";
+      } else if (preset === "april_cuda") {
+        document.getElementById("pattern-type").value = "april";
+        document.getElementById("tag-family").value = "tag36h11";
+        document.getElementById("square-mm").value = "80.0";
+        document.getElementById("marker-mm").value = "64.0";
+        document.getElementById("loss-type").value = "huber";
+        document.getElementById("loss-scale").value = "1.0";
+        document.getElementById("threads").value = "8";
+        document.getElementById("stride").value = "1";
+        document.getElementById("use-cuda").checked = true;
+      } else if (preset === "high_robust") {
+        document.getElementById("loss-type").value = "cauchy";
+        document.getElementById("loss-scale").value = "1.5";
+      } else if (preset === "quick_test") {
+        document.getElementById("stride").value = "2";
+        document.getElementById("loss-type").value = "huber";
+        document.getElementById("loss-scale").value = "1.0";
+      }
+    }
+
+    // Pre-flight Dataset Validation
+    async function runPreflightCheck() {
+      const sel = document.getElementById("dataset-select");
+      const path = sel ? sel.value : "";
+      if (!path) {
+        alert("Please select a dataset to validate.");
+        return;
+      }
+      switchTab('validate');
+      const container = document.getElementById("validation-report-card");
+      container.innerHTML = '<div class="card" style="text-align:center; padding:24px;">Analyzing dataset structure and files...</div>';
+      try {
+        const res = await fetch("/api/validate?path=" + encodeURIComponent(path));
+        const valData = await res.json();
+        renderValidationReport(valData);
+      } catch (e) {
+        container.innerHTML = `<div class="card" style="color:var(--danger);">Validation failed to execute: ${e}</div>`;
+      }
+    }
+
+    function renderValidationReport(data) {
+      const container = document.getElementById("validation-report-card");
+      const summary = data.summary || {};
+      const cams = summary.cameras || {};
+      const pat = summary.pattern || {};
+      const boards = summary.boards || [];
+
+      let camsHtml = "";
+      Object.entries(cams).forEach(([name, info]) => {
+        camsHtml += `
+          <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:6px; padding:10px 14px; margin-bottom:8px;">
+            <div style="display:flex; justify-content:space-between; font-weight:600; font-size:0.85rem; color:var(--primary);">
+              <span>🎥 ${name}</span>
+              <span>${info.frames} synchronized frames</span>
+            </div>
+            <div style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">
+              Resolution: ${info.width} &times; ${info.height} px &bull; Folder: ${info.folder}
+            </div>
+          </div>
+        `;
+      });
+
+      let alertsHtml = "";
+      (data.errors || []).forEach(err => {
+        alertsHtml += `<div style="background:rgba(239,68,68,0.15); border:1px solid var(--danger); border-radius:6px; padding:10px; margin-bottom:8px; color:#fca5a5; font-size:0.82rem;">❌ ${err}</div>`;
+      });
+      (data.warnings || []).forEach(warn => {
+        alertsHtml += `<div style="background:rgba(245,158,11,0.15); border:1px solid var(--warning); border-radius:6px; padding:10px; margin-bottom:8px; color:#fde68a; font-size:0.82rem;">⚠️ ${warn}</div>`;
+      });
+
+      const statusBadge = data.valid 
+        ? '<span class="badge badge-cuda" style="font-size:0.85rem;">✅ Dataset Ready for Calibration</span>'
+        : '<span class="badge btn-danger" style="font-size:0.85rem;">❌ Issues Found</span>';
+
+      container.innerHTML = `
+        <div class="card" style="margin-bottom:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h3 style="margin:0;">Validation Result</h3>
+            ${statusBadge}
+          </div>
+          ${alertsHtml}
+          <div class="prop-row"><span class="prop-label">Dataset Path</span><span class="prop-val" style="font-family:monospace; font-size:0.75rem;">${summary.dataset_path || ""}</span></div>
+          <div class="prop-row"><span class="prop-label">Pattern Type</span><span class="prop-val">${pat.type || "N/A"} (${pat.squaresX || 0} &times; ${pat.squaresY || 0} squares)</span></div>
+          <div class="prop-row"><span class="prop-label">Target Boards</span><span class="prop-val">${pat.numberBoards || 0} board(s)</span></div>
+          ${pat.dictionary ? `<div class="prop-row"><span class="prop-label">ArUco Dictionary</span><span class="prop-val">${pat.dictionary} (Max ${pat.dict_capacity} markers)</span></div>` : ""}
+          ${pat.april_family ? `<div class="prop-row"><span class="prop-label">AprilTag Family</span><span class="prop-val">${pat.april_family} (Max ${pat.dict_capacity} tags)</span></div>` : ""}
+        </div>
+
+        <div class="card">
+          <h3>Camera Verification (${Object.keys(cams).length} detected)</h3>
+          ${camsHtml || '<div style="color:var(--text-muted); font-size:0.8rem;">No camera folders discovered.</div>'}
+        </div>
+      `;
     }
 
     // System info & Datasets initialization
@@ -1296,6 +1457,21 @@ class StudioRequestHandler(BaseHTTPRequestHandler):
 
         if path == "/api/datasets":
             self._send_json(HTTPStatus.OK, find_available_datasets())
+            return
+
+        if path == "/api/validate":
+            cali_path_str = query.get("path", [""])[0]
+            if not cali_path_str:
+                self._send_json(HTTPStatus.BAD_REQUEST, {"error": "Missing 'path' parameter"})
+                return
+            if validate_dataset is None:
+                self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "validate_dataset module unavailable"})
+                return
+            try:
+                res = validate_dataset(Path(cali_path_str))
+                self._send_json(HTTPStatus.OK, res)
+            except Exception as e:
+                self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(e)})
             return
 
         if path == "/api/calibration":

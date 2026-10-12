@@ -255,6 +255,66 @@ def export_colmap(data: Dict[str, Any], out_dir: Path) -> List[Path]:
     return [cameras_txt, images_txt]
 
 
+def export_opencv(data: Dict[str, Any], out_dir: Path) -> List[Path]:
+    """Export OpenCV cv::FileStorage YAML files (one per camera)."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    generated = []
+
+    for cam in data.get("cameras", []):
+        name = cam.get("name", "camera")
+        fx = cam.get("fx", 800.0)
+        fy = cam.get("fy", 800.0)
+        cx = cam.get("cx", 480.0)
+        cy = cam.get("cy", 360.0)
+        k1 = cam.get("k1", 0.0)
+        k2 = cam.get("k2", 0.0)
+        p1 = cam.get("p1", 0.0)
+        p2 = cam.get("p2", 0.0)
+        k3 = cam.get("k3", 0.0)
+        rms = cam.get("rms", 0.0)
+
+        width = int(cx * 2) if cx > 0 else 960
+        height = int(cy * 2) if cy > 0 else 720
+
+        T_wc = cam.get("T_world_camera", [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ])
+
+        yaml_content = f"""%YAML:1.0
+---
+image_width: {width}
+image_height: {height}
+camera_name: "{name}"
+reprojection_rms: {rms:.6f}
+camera_matrix: !!opencv-matrix
+   rows: 3
+   cols: 3
+   dt: d
+   data: [ {fx:.8f}, 0., {cx:.8f}, 0., {fy:.8f}, {cy:.8f}, 0., 0., 1. ]
+distortion_coefficients: !!opencv-matrix
+   rows: 5
+   cols: 1
+   dt: d
+   data: [ {k1:.8e}, {k2:.8e}, {p1:.8e}, {p2:.8e}, {k3:.8e} ]
+transform_world_camera: !!opencv-matrix
+   rows: 4
+   cols: 4
+   dt: d
+   data: [ {T_wc[0][0]:.8f}, {T_wc[0][1]:.8f}, {T_wc[0][2]:.8f}, {T_wc[0][3]:.8f},
+           {T_wc[1][0]:.8f}, {T_wc[1][1]:.8f}, {T_wc[1][2]:.8f}, {T_wc[1][3]:.8f},
+           {T_wc[2][0]:.8f}, {T_wc[2][1]:.8f}, {T_wc[2][2]:.8f}, {T_wc[2][3]:.8f},
+           {T_wc[3][0]:.8f}, {T_wc[3][1]:.8f}, {T_wc[3][2]:.8f}, {T_wc[3][3]:.8f} ]
+"""
+        yaml_path = out_dir / f"{name}_opencv.yaml"
+        yaml_path.write_text(yaml_content, encoding="utf-8")
+        generated.append(yaml_path)
+
+    return generated
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Export CALICO calibration data to ROS, NeRF, or COLMAP."
@@ -267,7 +327,7 @@ def main() -> int:
     parser.add_argument(
         "--format",
         "-f",
-        choices=["all", "ros", "nerfstudio", "colmap"],
+        choices=["all", "ros", "nerfstudio", "colmap", "opencv"],
         default="all",
         help="Export format target (default: all)",
     )
@@ -311,6 +371,11 @@ def main() -> int:
         colmap_dir = out_base / "colmap"
         res = export_colmap(data, colmap_dir)
         print(f"[COLMAP] Exported cameras.txt and images.txt to {colmap_dir}")
+
+    if args.format in ("all", "opencv"):
+        cv_dir = out_base / "opencv"
+        res = export_opencv(data, cv_dir)
+        print(f"[OpenCV] Exported {len(res)} cv::FileStorage YAML file(s) to {cv_dir}")
 
     print("Export complete.")
     return 0
