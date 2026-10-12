@@ -822,6 +822,50 @@ class TestAprilTagGridVariants(unittest.TestCase):
         self.assertTrue(expected.issubset(found))
 
 
+class TestCharucoBoardVariants(unittest.TestCase):
+    """Generate ChArUco boards across dictionaries/sizes and detect all corners."""
+
+    def test_dicts_and_sizes_detect_all_corners(self):
+        cases = [
+            (cv2.aruco.DICT_4X4_50, 5, 4, 80, 50),
+            (cv2.aruco.DICT_4X4_100, 7, 5, 80, 60),
+            (cv2.aruco.DICT_5X5_100, 7, 5, 80, 60),
+            (cv2.aruco.DICT_6X6_250, 7, 5, 80, 60),
+            (cv2.aruco.DICT_6X6_250, 9, 6, 70, 50),
+            (cv2.aruco.DICT_6X6_1000, 12, 9, 56, 40),
+            (cv2.aruco.DICT_7X7_250, 8, 6, 72, 52),
+            (cv2.aruco.DICT_APRILTAG_36h11, 7, 5, 80, 60),
+            (cv2.aruco.DICT_5X5_50, 5, 4, 100, 70),
+        ]
+        for dict_id, sx, sy, sq, mk in cases:
+            with self.subTest(dict_id=dict_id, grid=f"{sx}x{sy}"):
+                dictionary = cv2.aruco.getPredefinedDictionary(dict_id)
+                board = cv2.aruco.CharucoBoard((sx, sy), float(sq), float(mk), dictionary)
+                margins = 20
+                img = board.generateImage((sx * sq + 2 * margins, sy * sq + 2 * margins), marginSize=margins)
+                det = cv2.aruco.CharucoDetector(board)
+                corners, ids, _mc, _mi = det.detectBoard(img)
+                expected = (sx - 1) * (sy - 1)
+                self.assertIsNotNone(corners)
+                self.assertIsNotNone(ids)
+                self.assertEqual(len(corners), expected)
+                self.assertEqual(len(ids), expected)
+
+    def test_charuco_variant_configs_exist(self):
+        cfg_dir = Path(__file__).resolve().parent.parent / "configs" / "charuco-variants"
+        expected = {
+            "charuco-4x4-5x4.yaml",
+            "charuco-5x5-7x5.yaml",
+            "charuco-6x6-9x6.yaml",
+            "charuco-6x6-12x9.yaml",
+            "charuco-7x7-8x6.yaml",
+            "charuco-april36h11-7x5.yaml",
+        }
+        self.assertTrue(cfg_dir.is_dir())
+        found = {p.name for p in cfg_dir.glob("charuco-*.yaml")}
+        self.assertTrue(expected.issubset(found))
+
+
 if __name__ == "__main__":
     unittest.main()
 

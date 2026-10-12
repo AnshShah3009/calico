@@ -79,6 +79,8 @@ Detection order: GPU **cuAprilTags** (`tag36h11` only, if linked) → Kaess CPU 
 
 Example specs: `configs/april-grid.yaml` (default 6×6 `tag36h11`) and `configs/april-variants/` (`tag16h5` / `tag25h9` / `tag36h10` / dense `tag36h11`). Generate with `--april --create-patterns`, then calibrate with `--april --calibrate`.
 
+ChArUco examples: `configs/charuco-grid.yaml` (default 7×5, `arcCode: 10` / `DICT_6X6_250`) and `configs/charuco-variants/` (`4X4` / `5X5` / `6X6` / `7X7` / AprilTag-backed boards). Generate with `--charuco --create-patterns`.
+
 ## Running
 
 `--charuco` or `--april` is **mandatory** (exclusive or). `--calibrate` or `--create-patterns` also mandatory.

@@ -1,0 +1,10 @@
+%YAML:1.0
+# Variant: arcCode=11 12x9
+type: charuco
+squaresX: 12
+squaresY: 9
+squareLength: 56
+markerLength: 40
+margins: 20
+numberBoards: 2
+arcCode: 11

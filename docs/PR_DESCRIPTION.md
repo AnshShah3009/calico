@@ -56,6 +56,11 @@ OpenCV render + detect across `tag16h5`, `tag25h9`, `tag36h10`, `tag36h11` and m
 
 ![AprilTag grid variants](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/april_grids_gallery.png)
 
+### 5. ChArUco Board Variants (dictionaries × sizes)
+OpenCV `CharucoBoard` generate + `CharucoDetector` across `4X4` / `5X5` / `6X6` / `7X7` and AprilTag-backed ChArUco (`arcCode: 20`), sparse → dense boards (9/9 full chessboard-corner detections). Sample YAML in `configs/charuco-variants/`.
+
+![ChArUco board variants](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/charuco_boards_gallery.png)
+
 ---
 
 ## Ground-Truth Verification Thresholds
@@ -71,7 +76,7 @@ Enforced by `sim/verify_mujoco_april.py` / `sim/verify_mujoco_charuco.py` (no `-
 
 Pose checks assert the `inv(T)` convention (calibration.json `T_world_camera` is camera-from-world) and do not min() over both conventions.
 
-**Local checks for this update:** `python3 tools/test_tools.py` (includes AprilTag multi-family grid render/detect). Showcase images from MuJoCo runs + AprilTag variant gallery (`tag16h5` / `tag25h9` / `tag36h10` / `tag36h11`).
+**Local checks for this update:** `python3 tools/test_tools.py` (AprilTag multi-family grids + ChArUco dict×size boards). Showcase images from MuJoCo runs + pattern-variant galleries.
 
 ---
 

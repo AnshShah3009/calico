@@ -1,0 +1,10 @@
+%YAML:1.0
+# Variant: arcCode=10 9x6
+type: charuco
+squaresX: 9
+squaresY: 6
+squareLength: 70
+markerLength: 50
+margins: 20
+numberBoards: 2
+arcCode: 10
