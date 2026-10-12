@@ -10,6 +10,7 @@
 #include "helper.hpp"
 #include "solving-structure.hpp"
 #include "cuda-detect.hpp"
+#include <algorithm>
 // used 11/27
 void SolveWithShahsMethod(Matrix4d& Result, const vector<Matrix4d>& LHS, const vector<Matrix4d>& RHS, bool verbose){
 
@@ -153,7 +154,9 @@ void CopyFromCalibration(const vector<CameraCali*>& CCV, double* camera_params){
             camera_params[12*i + 4 + j] = 0;
         }
 
-        for (int j = 0; j < CCV[i]->distortion.rows(); j++){
+        // camera_params is fixed at 12 doubles/camera (4 intrinsics + 8 distortion).
+        const int n_dist = std::min(8, static_cast<int>(CCV[i]->distortion.rows()));
+        for (int j = 0; j < n_dist; j++){
             camera_params[12*i + 4 + j] = CCV[i]->distortion(j);
         }
     }

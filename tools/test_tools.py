@@ -492,9 +492,17 @@ class TestCalicoGUI(unittest.TestCase):
 
     def test_gui_http_server(self):
         import urllib.request
+        import urllib.error
         import threading
         import time
+        import calico_gui
         from calico_gui import ThreadingHTTPServer, StudioRequestHandler
+
+        calico_gui.AUTH_TOKEN = "test-token-calico-studio"
+        auth_hdr = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {calico_gui.AUTH_TOKEN}",
+        }
 
         # Pick an ephemeral port
         server = ThreadingHTTPServer(("127.0.0.1", 0), StudioRequestHandler)
@@ -509,6 +517,8 @@ class TestCalicoGUI(unittest.TestCase):
                 self.assertEqual(resp.status, 200)
                 body = resp.read().decode("utf-8")
                 self.assertIn("<title>CALICO Studio", body)
+                self.assertIn(calico_gui.AUTH_TOKEN, body)
+                self.assertNotIn("%%CALICO_AUTH_TOKEN%%", body)
 
             # 2. Test GET /api/status
             with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/status") as resp:
@@ -528,11 +538,22 @@ class TestCalicoGUI(unittest.TestCase):
                 logs_resp = json.loads(resp.read().decode("utf-8"))
                 self.assertIn("status", logs_resp)
 
+            # 4b. POST without auth must 401
+            bad = urllib.request.Request(
+                f"http://127.0.0.1:{port}/api/export",
+                data=json.dumps({"cali_dir": str(self.root), "format": "ros"}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with self.assertRaises(urllib.error.HTTPError) as cm:
+                urllib.request.urlopen(bad)
+            self.assertEqual(cm.exception.code, 401)
+
             # 5. Test POST /api/export
             req = urllib.request.Request(
                 f"http://127.0.0.1:{port}/api/export",
                 data=json.dumps({"cali_dir": str(self.root), "format": "ros"}).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+                headers=auth_hdr,
                 method="POST"
             )
             with urllib.request.urlopen(req) as resp:
@@ -549,7 +570,7 @@ class TestCalicoGUI(unittest.TestCase):
             req_cv = urllib.request.Request(
                 f"http://127.0.0.1:{port}/api/export",
                 data=json.dumps({"cali_dir": str(self.root), "format": "opencv"}).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+                headers=auth_hdr,
                 method="POST"
             )
             with urllib.request.urlopen(req_cv) as resp:
@@ -560,6 +581,44 @@ class TestCalicoGUI(unittest.TestCase):
         finally:
             server.shutdown()
             server.server_close()
+
+    def test_build_calico_run_cmd_no_stride(self):
+        from calico_gui import build_calico_run_cmd, SRC_DIR
+        cmd = build_calico_run_cmd({
+            "pattern_type": "april",
+            "input_dir": "/data/in",
+            "output_dir": "/data/out",
+            "use_cuda": True,
+            "checkpoint": True,
+            "json_export": True,
+        }, calico_bin="/bin/calico-dec2023")
+        self.assertEqual(cmd[0], "/bin/calico-dec2023")
+        self.assertIn("--april", cmd)
+        self.assertIn("--calibrate", cmd)
+        self.assertIn(f"--src-dir={SRC_DIR}/", cmd)
+        self.assertIn("--use-cuda", cmd)
+        self.assertTrue(all(not a.startswith("--stride") for a in cmd))
+        with self.assertRaises(ValueError):
+            build_calico_run_cmd({"pattern_type": "config", "input_dir": "/x"})
+
+
+class TestCudaMacroAlignment(unittest.TestCase):
+    """Guard against the CALICO_USE_CUDA vs WITH_CUDA silent dead-code bug."""
+
+    def test_cmake_macros_match_cpp_guards(self):
+        root = Path(__file__).resolve().parent.parent
+        cmake = (root / "src" / "CMakeLists.txt").read_text()
+        cpp = (root / "src" / "cuda-detect.cpp").read_text()
+        self.assertIn("add_definitions(-DCALICO_USE_CUDA)", cmake)
+        self.assertIn("add_definitions(-DCALICO_HAVE_CUAPRILTAGS)", cmake)
+        self.assertIn("#ifdef CALICO_USE_CUDA", cpp)
+        self.assertIn("#ifdef CALICO_HAVE_CUAPRILTAGS", cpp)
+        self.assertNotIn("#ifdef WITH_CUDA", cpp)
+        self.assertNotIn("#ifdef HAVE_CUAPRILTAGS", cpp)
+        self.assertIn("input.dev_ptr", cpp)
+        self.assertNotIn("dev_p016", cpp)
+        self.assertIn("COLOR_GRAY2RGB", cpp)
+        self.assertIn("${CALICO_CUDA_LIBS}", cmake)
 
 
 class TestCharucoCudaAndCalibrationVerification(unittest.TestCase):

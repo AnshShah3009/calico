@@ -53,9 +53,11 @@ WORKDIR /calico/build
 RUN cmake ../src -DCMAKE_BUILD_TYPE=Release -DENABLE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75 && make -j$(nproc) && ctest --output-on-failure
 
 FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+# imgcodecs DT_NEEDED deps (libopencv_imgcodecs.so → png/jpeg/tiff/webp/openjp2).
 RUN apt-get update && apt-get install -y \
     libgtk2.0-0 libtbb2 libgoogle-glog0v5 libsuitesparseconfig5 \
     libcholmod3 liblapack3 libblas3 libatlas3-base libgomp1 \
+    libpng16-16 libjpeg-turbo8 libtiff5 libwebp6 libopenjp2-7 \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /usr/local /usr/local
 COPY --from=builder /calico/build/calico-dec2023 /usr/local/bin/calico-dec2023

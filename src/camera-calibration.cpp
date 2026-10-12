@@ -528,34 +528,57 @@ bool CameraCali::LoadIntrinsics(const string& filename){
         return false;
     }
 
+    // Safe defaults if the file omits a section or tags arrive out of order.
+    internal_parameters = Matrix3d::Identity();
+    cameraMatrix = cv::Mat::eye(3, 3, CV_64F);
+    distortion.resize(5);
+    distortion.setZero();
+    distCoeffs = cv::Mat::zeros(5, 1, CV_64F);
+
+    bool saw_internal = false;
+    bool saw_distortion = false;
     string tag;
     while (in >> tag){
         if (tag == "internal_matrix"){
-            internal_parameters = Matrix3d::Identity();
             for (int i = 0; i < 3; i++){
                 for (int j = 0; j < 3; j++){
                     in >> internal_parameters(i, j);
                 }
             }
-            cameraMatrix = cv::Mat::eye(3, 3, CV_64F);
             for (int i = 0; i < 3; i++){
                 for (int j = 0; j < 3; j++){
                     cameraMatrix.at<double>(i, j) = internal_parameters(i, j);
                 }
             }
+            saw_internal = true;
         } else if (tag == "distortion_size"){
             int size = 0;
             in >> size;
+            if (size < 1 || size > 8) {
+                cout << "Invalid distortion_size " << size
+                     << " in " << filename << " (need 1..8)" << endl;
+                return false;
+            }
             distortion.resize(size);
+            distortion.setZero();
             distCoeffs = cv::Mat::zeros(size, 1, CV_64F);
         } else if (tag == "distortion_vector"){
             for (int i = 0; i < distortion.rows(); i++){
                 in >> distortion(i);
                 distCoeffs.at<double>(i, 0) = distortion(i);
             }
+            saw_distortion = true;
         }
     }
     in.close();
+    if (!saw_internal) {
+        cout << "Intrinsics file " << filename << " missing internal_matrix" << endl;
+        return false;
+    }
+    if (!saw_distortion) {
+        cout << "Intrinsics file " << filename << " missing distortion_vector" << endl;
+        return false;
+    }
     cout << "Loaded intrinsics from " << filename << endl;
     return true;
 }

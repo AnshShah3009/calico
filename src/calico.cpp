@@ -226,7 +226,7 @@ int main(int argc, char **argv){
             cout << std::left << setw(30) << "--per-camera-mse " << "Append per-camera reprojection MSE to total_results.txt." << endl;
             cout << std::left << setw(30) << "--focus-camera=[STR] " << "Comma-separated cameras to calibrate (inverse of exclude)." << endl;
             cout << std::left << setw(30) << "--min-boards=[INT] " << "Auto-exclude cameras detecting fewer than N boards." << endl;
-            cout << std::left << setw(30) << "--use-cuda " << "GPU preprocess, optional cuAprilTags, Ceres CUDA if built WITH_CUDA." << endl;
+            cout << std::left << setw(30) << "--use-cuda " << "GPU preprocess, optional cuAprilTags, Ceres CUDA if built with ENABLE_CUDA." << endl;
             cout << std::left << setw(30) << "--ingest-intrinsics=[DIR] " << "Load per-camera cali_results.txt and keep K/dist fixed." << endl;
             cout << std::left << setw(30) << "--loss=[STR] " << "Robust loss: trivial (default), huber, or cauchy." << endl;
             cout << std::left << setw(30) << "--loss-scale=[FLOAT] " << "Loss scale parameter in pixels (default: 1.0)." << endl;

@@ -33,7 +33,9 @@ extern "C" int calico_cuda_bgr_to_gray(const unsigned char* bgr, unsigned char* 
     const int threads = 256;
     const int blocks = (n + threads - 1) / threads;
     k_bgr_to_gray<<<blocks, threads>>>(d_bgr, d_gray, n);
+    // Sync so async kernel faults are visible before the host memcpy.
     if (cudaGetLastError() != cudaSuccess ||
+            cudaDeviceSynchronize() != cudaSuccess ||
             cudaMemcpy(gray, d_gray, static_cast<size_t>(n), cudaMemcpyDeviceToHost) != cudaSuccess) {
         cudaFree(d_bgr);
         cudaFree(d_gray);

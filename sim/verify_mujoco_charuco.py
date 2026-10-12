@@ -431,8 +431,6 @@ def run_calico() -> None:
         f"{OUT_IN}:/docker_dir/sim-in",
         "-v",
         f"{OUT_CALI}:/docker_dir/sim-out",
-        "-v",
-        f"{SIM_ROOT / 'intrinsics'}:/docker_dir/sim-k",
         "--entrypoint",
         "calico-dec2023",
         service,
@@ -443,7 +441,8 @@ def run_calico() -> None:
         "--src-dir=/src/",
         "--json",
         "--summary",
-        "--ingest-intrinsics=/docker_dir/sim-k/",
+        # Do NOT pass --ingest-intrinsics with the harness's own GT K: that makes
+        # the intrinsics check a tautology (Δfx forced to 0). Estimate K for real.
     ]
     if USE_CUDA:
         cmd.append("--use-cuda")
@@ -502,14 +501,12 @@ def compare() -> int:
                 worst_t = max(worst_t, te)
         return worst_r, worst_t
 
-    r0, t0 = report("T as world-from-camera", Test)
-    r1, t1 = report("T inverted (camera-from-world)", Test_inv)
-    if r1 + t1 / 100.0 < r0 + t0 / 100.0:
-        pose_ok = r1 <= 3.0 and t1 <= 25.0
-        print(f"using inverted T (rot {r1:.3f} deg, trans {t1:.2f} mm)")
-    else:
-        pose_ok = r0 <= 3.0 and t0 <= 25.0
-        print(f"using world-from-camera T (rot {r0:.3f} deg, trans {t0:.2f} mm)")
+    # calibration.json "T_world_camera" is camera-from-world (needs inv to match GT).
+    # Do not min() over conventions — that would pass a full pose inversion.
+    r0, t0 = report("raw T (wrong if camera-from-world)", Test)
+    r1, t1 = report("inv(T) camera-from-world → world-from-camera", Test_inv)
+    pose_ok = r1 <= 3.0 and t1 <= 25.0
+    print(f"asserting inv(T) (rot {r1:.3f} deg, trans {t1:.2f} mm); raw was {r0:.3f} deg / {t0:.2f} mm")
 
     rms_ok = True
     print("\n=== Per-camera OpenCV RMS ===")

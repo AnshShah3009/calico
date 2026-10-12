@@ -19,6 +19,7 @@ import json
 import math
 import os
 import re
+import secrets
 import shutil
 import socket
 import subprocess
@@ -41,6 +42,11 @@ except ImportError:
 
 
 WORKSPACE_DIR = Path(__file__).resolve().parent.parent
+SRC_DIR = WORKSPACE_DIR / "src"
+
+# Set in main() (or by tests). Required as Bearer token for mutating API routes.
+AUTH_TOKEN: str = os.environ.get("CALICO_STUDIO_TOKEN", "")
+ALLOWED_PATTERN_TYPES = frozenset({"charuco", "april"})
 
 
 def detect_system_info() -> Dict[str, Any]:
@@ -1034,6 +1040,15 @@ STUDIO_HTML = """<!DOCTYPE html>
     let activeCalibrationData = null;
     let pollInterval = null;
     let lastLogLine = 0;
+    const AUTH_TOKEN = "%%CALICO_AUTH_TOKEN%%";
+
+    function authHeaders(extra) {
+      const h = Object.assign({ "Content-Type": "application/json" }, extra || {});
+      if (AUTH_TOKEN) {
+        h["Authorization"] = "Bearer " + AUTH_TOKEN;
+      }
+      return h;
+    }
 
     function showToast(msg, type = "info") {
       const container = document.getElementById("toast-container");
@@ -1251,7 +1266,7 @@ STUDIO_HTML = """<!DOCTYPE html>
 
       const res = await fetch("/api/run", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(),
         body: JSON.stringify(payload)
       });
       const data = await res.json();
@@ -1268,7 +1283,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
 
     async function cancelCalibration() {
-      await fetch("/api/stop", { method: "POST" });
+      await fetch("/api/stop", { method: "POST", headers: authHeaders() });
       showToast("Calibration stop requested", "info");
     }
 
@@ -1315,7 +1330,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       }
       const res = await fetch("/api/export", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(),
         body: JSON.stringify({ cali_dir: activeCalibrationData.cali_dir, format: format })
       });
       const result = await res.json();
@@ -1602,9 +1617,29 @@ class StudioRequestHandler(BaseHTTPRequestHandler):
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
+        # Intentionally no Access-Control-Allow-Origin: same-origin only.
         self.end_headers()
         self.wfile.write(body)
+
+    def _authorized(self) -> bool:
+        if not AUTH_TOKEN:
+            return False
+        auth = self.headers.get("Authorization", "")
+        return auth == f"Bearer {AUTH_TOKEN}"
+
+    def _require_auth(self) -> bool:
+        if self._authorized():
+            return True
+        self._send_json(HTTPStatus.UNAUTHORIZED, {"error": "Unauthorized"})
+        return False
+
+    def _require_json_content_type(self) -> bool:
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if ctype == "application/json":
+            return True
+        self._send_json(HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
+                        {"error": "Content-Type must be application/json"})
+        return False
 
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
@@ -1612,7 +1647,8 @@ class StudioRequestHandler(BaseHTTPRequestHandler):
         query = urllib.parse.parse_qs(parsed.query)
 
         if path in ("/", "/index.html"):
-            body = STUDIO_HTML.encode("utf-8")
+            html = STUDIO_HTML.replace("%%CALICO_AUTH_TOKEN%%", AUTH_TOKEN)
+            body = html.encode("utf-8")
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -1664,12 +1700,19 @@ class StudioRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
+        if not self._require_auth():
+            return
+        # /api/stop may be body-less; other mutating routes require JSON.
+        if parsed.path != "/api/stop" and not self._require_json_content_type():
+            return
+
         content_len = int(self.headers.get("Content-Length", 0))
         body_bytes = self.rfile.read(content_len)
         try:
             payload = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
         except Exception:
-            payload = {}
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "Invalid JSON body"})
+            return
 
         if parsed.path == "/api/run":
             input_dir = payload.get("input_dir", "")
@@ -1677,8 +1720,19 @@ class StudioRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(HTTPStatus.BAD_REQUEST, {"error": "Missing input_dir"})
                 return
 
+            pattern_type = str(payload.get("pattern_type", "charuco")).strip().lower()
+            if pattern_type not in ALLOWED_PATTERN_TYPES:
+                self._send_json(HTTPStatus.BAD_REQUEST, {
+                    "error": f"pattern_type must be one of {sorted(ALLOWED_PATTERN_TYPES)}"
+                })
+                return
+
             output_dir = payload.get("output_dir") or str(WORKSPACE_DIR / "results" / f"run_{int(time.time())}")
-            Path(output_dir).mkdir(parents=True, exist_ok=True)
+            try:
+                Path(output_dir).mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                self._send_json(HTTPStatus.BAD_REQUEST, {"error": f"Cannot create output_dir: {e}"})
+                return
 
             # Build CALICO command line arguments
             sys_info = detect_system_info()
@@ -1689,16 +1743,22 @@ class StudioRequestHandler(BaseHTTPRequestHandler):
             else:
                 cmd = [calico_bin]
 
+            detector_yml = SRC_DIR / "detector_params.yml"
             cmd.extend([
-                f"--{payload.get('pattern_type', 'charuco')}",
+                f"--{pattern_type}",
                 "--calibrate",
                 f"--input={input_dir}",
                 f"--output={output_dir}",
+                f"--src-dir={SRC_DIR}/",
                 f"--loss={payload.get('loss', 'huber')}",
                 f"--loss-scale={payload.get('loss_scale', 1.0)}",
                 f"--num-threads={payload.get('threads', 8)}",
-                f"--stride={payload.get('stride', 1)}",
             ])
+            if not detector_yml.is_file():
+                self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
+                    "error": f"detector_params.yml not found at {detector_yml}"
+                })
+                return
 
             if payload.get("use_cuda"):
                 cmd.append("--use-cuda")
@@ -1750,11 +1810,50 @@ class StudioRequestHandler(BaseHTTPRequestHandler):
         self._send_json(HTTPStatus.NOT_FOUND, {"error": "Not Found"})
 
 
+def build_calico_run_cmd(payload: Dict[str, Any], calico_bin: Optional[str] = None) -> List[str]:
+    """Build argv for a calibration run (shared by /api/run and unit tests)."""
+    pattern_type = str(payload.get("pattern_type", "charuco")).strip().lower()
+    if pattern_type not in ALLOWED_PATTERN_TYPES:
+        raise ValueError(f"pattern_type must be one of {sorted(ALLOWED_PATTERN_TYPES)}")
+    input_dir = payload.get("input_dir", "")
+    if not input_dir:
+        raise ValueError("Missing input_dir")
+    output_dir = payload.get("output_dir") or str(WORKSPACE_DIR / "results" / "run")
+    bin_path = calico_bin or "calico-dec2023"
+    cmd = [
+        bin_path,
+        f"--{pattern_type}",
+        "--calibrate",
+        f"--input={input_dir}",
+        f"--output={output_dir}",
+        f"--src-dir={SRC_DIR}/",
+        f"--loss={payload.get('loss', 'huber')}",
+        f"--loss-scale={payload.get('loss_scale', 1.0)}",
+        f"--num-threads={payload.get('threads', 8)}",
+    ]
+    if payload.get("use_cuda"):
+        cmd.append("--use-cuda")
+    if payload.get("checkpoint"):
+        cmd.append("--checkpoint")
+    if payload.get("json_export"):
+        cmd.append("--json")
+    return cmd
+
+
 def main() -> int:
+    global AUTH_TOKEN
     parser = argparse.ArgumentParser(description="Start the CALICO Studio Web GUI server.")
     parser.add_argument("--port", "-p", type=int, default=8080, help="Port to bind (default: 8080)")
-    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host interface (default: 0.0.0.0)")
+    parser.add_argument("--host", type=str, default="127.0.0.1",
+                        help="Host interface (default: 127.0.0.1; use 0.0.0.0 only behind a trusted proxy)")
+    parser.add_argument("--token", type=str, default="",
+                        help="Bearer token for mutating API routes (default: env CALICO_STUDIO_TOKEN or random)")
     args = parser.parse_args()
+
+    if args.token:
+        AUTH_TOKEN = args.token
+    elif not AUTH_TOKEN:
+        AUTH_TOKEN = secrets.token_urlsafe(24)
 
     # Try binding, or search for free port
     server = None
@@ -1772,9 +1871,12 @@ def main() -> int:
         return 1
 
     print("==================================================================")
-    print("🚀 CALICO Studio running at:")
-    print(f"   http://localhost:{port}/")
+    print("CALICO Studio running at:")
     print(f"   http://127.0.0.1:{port}/")
+    if args.host not in ("127.0.0.1", "localhost", "::1"):
+        print(f"   http://{args.host}:{port}/  (WARNING: non-loopback bind)")
+    print(f"API bearer token: {AUTH_TOKEN}")
+    print("(Injected into the local UI; pass Authorization: Bearer <token> for API clients)")
     print("Press Ctrl+C to stop the server.")
     print("==================================================================")
 

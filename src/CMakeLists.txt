@@ -1,4 +1,5 @@
-cmake_minimum_required(VERSION 3.16)
+# 3.18+: CMAKE_CUDA_ARCHITECTURES; 3.17+: CUDA::cudart via FindCUDAToolkit.
+cmake_minimum_required(VERSION 3.18)
 
 project(calico-dec2023 LANGUAGES CXX)
 
@@ -91,26 +92,39 @@ camera-visualization.hpp
 )
 
 set(CALICO_CUDA_LIBS "")
+set(CALICO_CUDA_SOURCES "")
 if(ENABLE_CUDA)
     include(CheckLanguage)
     check_language(CUDA)
     if(CMAKE_CUDA_COMPILER)
+        # Must set architectures before enable_language(CUDA) or the default sticks.
+        # Turing sm_75 default (GTX 1650 Ti / RTX 20xx); override with -DCMAKE_CUDA_ARCHITECTURES=...
+        if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES OR CMAKE_CUDA_ARCHITECTURES STREQUAL "")
+            set(CMAKE_CUDA_ARCHITECTURES 75 CACHE STRING "CUDA arch list" FORCE)
+        endif()
         enable_language(CUDA)
         set(CMAKE_CUDA_STANDARD 17)
         set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-        # Turing sm_75 default (GTX 1650 Ti / RTX 20xx); override with -DCMAKE_CUDA_ARCHITECTURES=...
-        if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-            set(CMAKE_CUDA_ARCHITECTURES 75)
-        endif()
         find_package(CUDAToolkit REQUIRED)
         list(APPEND calico_SOURCES apriltag_cuda.cu)
+        list(APPEND CALICO_CUDA_SOURCES apriltag_cuda.cu)
         add_definitions(-DCALICO_USE_CUDA)
         set(CALICO_CUDA_LIBS CUDA::cudart)
-        # Optional: NVIDIA cuAprilTags if installed on host / in container
-        find_path(CUAPRILTAGS_INCLUDE_DIR nvapriltags/nvapriltags.h
-            HINTS /usr/local/include /usr/include)
-        find_library(CUAPRILTAGS_LIBRARY NAMES nvapriltags
-            HINTS /usr/local/lib /usr/lib)
+        # Optional OpenCV CUDA imgproc (contrib). Docker builds omit it.
+        if(TARGET opencv_cudaimgproc OR "cudaimgproc" IN_LIST OpenCV_LIB_COMPONENTS)
+            add_definitions(-DHAVE_OPENCV_CUDAIMGPROC)
+            message(STATUS "OpenCV cudaimgproc available")
+        endif()
+        # Optional: NVIDIA cuAprilTags (cuapriltags/cuAprilTags.h or legacy nvapriltags).
+        find_path(CUAPRILTAGS_INCLUDE_DIR
+            NAMES cuAprilTags.h nvapriltags.h
+            HINTS /usr/local/include /usr/include
+                  ${CUAPRILTAGS_ROOT}/include
+            PATH_SUFFIXES cuapriltags nvapriltags)
+        find_library(CUAPRILTAGS_LIBRARY
+            NAMES cuapriltags nvapriltags
+            HINTS /usr/local/lib /usr/lib
+                  ${CUAPRILTAGS_ROOT}/lib)
         if(CUAPRILTAGS_INCLUDE_DIR AND CUAPRILTAGS_LIBRARY)
             message(STATUS "Found cuAprilTags: ${CUAPRILTAGS_LIBRARY}")
             add_definitions(-DCALICO_HAVE_CUAPRILTAGS)
@@ -205,12 +219,13 @@ if(BUILD_TESTING)
         cuda-detect.cpp
         helper.cpp
         DirectoryFunctions.cpp
+        ${CALICO_CUDA_SOURCES}
     )
     add_executable(calico_tests ${TEST_SOURCES})
     target_include_directories(calico_tests PRIVATE ${Eigen_INCLUDE_DIRS} ${apriltag_INCLUDE_DIRS} ${CERES_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR})
     target_compile_features(calico_tests PRIVATE cxx_std_17)
     target_compile_options(calico_tests PRIVATE ${my_USUAL_FLAGS})
-    target_link_libraries(calico_tests ${CERES_LIBRARIES} ${OpenCV_LIBS} ${apriltags_LIBRARIES} ${apriltag_LIBRARIES} gomp Eigen3::Eigen glog gflags)
+    target_link_libraries(calico_tests ${CERES_LIBRARIES} ${OpenCV_LIBS} ${apriltags_LIBRARIES} ${apriltag_LIBRARIES} gomp Eigen3::Eigen glog gflags ${CALICO_CUDA_LIBS})
     add_test(NAME unit_tests COMMAND calico_tests)
     install(TARGETS calico_tests DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 endif()
