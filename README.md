@@ -285,11 +285,12 @@ To see the available options, run `./calico-dec2023` with no arguments or `--hel
 Printing help for calico, Dec. 2023.
 ESSENTIAL FUNCTIONALITY -------------------
 --verbose                     No arguments.  Writes additional information during the run.
---create-patterns             No arguments, write charuco or april image patterns from a specification file.
+--create-patterns             No arguments, write charuco, april, or aruco image patterns from a specification file.
 --calibrate                   No arguments, indicates that this dataset is a camera network or multicamera system.
 --num-threads                 Number of threads to use.  Default is # returned by omp_get_max_threads();, currently = 24
 --charuco                     Using charuco patterns.
 --april                       Using AprilTag patterns.
+--aruco                       Using ArUco marker grids (OpenCV GridBoard-style).
 
 DIRECTORIES AND PATHS ----------------------- 
 --input=[STRING]              Mandatory, has to be a directory.

@@ -29,6 +29,7 @@ int main(int argc, char **argv){
     int verbose = 0;
     int is_charuco = 0;
     int is_april = 0;
+    int is_aruco = 0;
     int zero_tangent_dist = 1;
     int zero_k3 = 1;
     int read_camera_calibration = 0;
@@ -107,6 +108,7 @@ int main(int argc, char **argv){
                 {"verbose", no_argument, &verbose, 1},
                 {"charuco",   no_argument,       &is_charuco, 1},
                 {"april",   no_argument,       &is_april, 1},
+                {"aruco",   no_argument,       &is_aruco, 1},
                 {"dry-run", no_argument, &dry_run, 1},
                 {"timestamp", no_argument, &timestamp_output, 1},
                 {"no-overwrite", no_argument, &no_overwrite, 1},
@@ -159,13 +161,14 @@ int main(int argc, char **argv){
 
             cout << "ESSENTIAL FUNCTIONALITY -------------------" << endl;
             cout << std::left << setw(30) << "--verbose" << "No arguments.  Writes additional information during the run." << endl;
-            cout << std::left << setw(30) << "--create-patterns" << "No arguments, write charuco or april image patterns from a specification file." << endl;
+            cout << std::left << setw(30) << "--create-patterns" << "No arguments, write charuco, april, or aruco image patterns from a specification file." << endl;
             cout << std::left << setw(30) << "--calibrate" << "No arguments, indicates that this dataset is a camera network or ";
                                 cout << "multicamera system." << endl;
             cout << std::left << setw(30) << "--num-threads "<< "Number of threads to use.  Default is # returned by ";
             cout << "omp_get_max_threads();, currently = " << number_threads << endl;
             cout << std::left << setw(30) << "--charuco" << "Using charuco patterns." << endl;
             cout << std::left << setw(30) << "--april" << "Using AprilTag patterns." << endl;
+            cout << std::left << setw(30) << "--aruco" << "Using ArUco marker grids (OpenCV GridBoard-style)." << endl;
 
             cout << endl;
             cout << "DIRECTORIES AND PATHS ----------------------- " << endl;
@@ -379,7 +382,7 @@ int main(int argc, char **argv){
     // Handle --version first, before any checks
     if (print_version) {
         cout << "calico-dec2023 (https://github.com/amy-tabb/calico)" << endl;
-        cout << "Multi-camera calibration with charuco or april tags." << endl;
+        cout << "Multi-camera calibration with charuco, april, or aruco marker grids." << endl;
         exit(0);
     }
 
@@ -439,6 +442,7 @@ int main(int argc, char **argv){
                     if (ival > 0) { number_threads = ival; omp_set_num_threads(ival); }
                 } else if (key == "charuco") { if (ival) is_charuco = 1;
                 } else if (key == "april") { if (ival) is_april = 1;
+                } else if (key == "aruco") { if (ival) is_aruco = 1;
                 } else if (key == "calibrate") { if (ival) calibrateGroupCameras = 1;
                 } else if (key == "create-patterns" || key == "create_patterns") { if (ival) create_patterns_only = 1;
                 } else if (key == "max-internal-read" || key == "max_internal_read") { if (ival > 0) max_internal_read = ival;
@@ -672,13 +676,14 @@ int main(int argc, char **argv){
     out.open(filename.c_str());
     out << "arguments: " << endl << argv[0] << " ";
 
-    if ( (is_charuco && is_april) ){
-        cout << "You cannot select both --charuco and --april.  It is exclusive or.  Quitting ... " << endl;
+    const int pattern_modes = (is_charuco ? 1 : 0) + (is_april ? 1 : 0) + (is_aruco ? 1 : 0);
+    if (pattern_modes > 1){
+        cout << "Select exactly one of --charuco, --april, or --aruco.  Quitting ... " << endl;
         exit(1);
     }
 
-    if ((!is_april && !is_charuco)){
-        cout << "You need to select either --charuco or --april.  Quitting ... " << endl;
+    if (pattern_modes == 0){
+        cout << "You need to select --charuco, --april, or --aruco.  Quitting ... " << endl;
         exit(1);
     }
 
@@ -688,6 +693,10 @@ int main(int argc, char **argv){
 
     if (is_april){
         out << "--april ";
+    }
+
+    if (is_aruco){
+        out << "--aruco ";
     }
 
     if (calibrateGroupCameras){
@@ -798,12 +807,12 @@ int main(int argc, char **argv){
             int dr_saved = dup(STDOUT_FILENO);
             int dr_null = open("/dev/null", O_WRONLY);
             if (dr_null >= 0) dup2(dr_null, STDOUT_FILENO);
-            DryRunValidation(input_dir, output_dir, src_file, is_charuco == 1);
+            DryRunValidation(input_dir, output_dir, src_file, is_charuco == 1, is_april == 1, is_aruco == 1);
             fflush(stdout);
             if (dr_saved >= 0) { dup2(dr_saved, STDOUT_FILENO); close(dr_saved); }
             if (dr_null >= 0) close(dr_null);
         } else {
-            DryRunValidation(input_dir, output_dir, src_file, is_charuco == 1);
+            DryRunValidation(input_dir, output_dir, src_file, is_charuco == 1, is_april == 1, is_aruco == 1);
         }
         } else {
             cout << "Dry-run: would generate patterns from " << input_dir << endl;
@@ -816,9 +825,9 @@ int main(int argc, char **argv){
                 initial_focal_px, zero_tangent_dist,
                 zero_k3, fix_principal_point, verbose, read_camera_calibration, only_camera_calibration, max_internal_read, max_internal_use,
                 max_external_positions, selectedk, number_points_needed_to_count_pattern, synchronized_rotating_option,
-                percentage_global_alg, percentage_global_rp, is_charuco, is_april, interleaved_solve, opts);
+                percentage_global_alg, percentage_global_rp, is_charuco, is_april, is_aruco, interleaved_solve, opts);
     }   else {
-        CreatePatterns(input_dir, output_dir, src_file, is_charuco);
+        CreatePatterns(input_dir, output_dir, src_file, is_charuco, is_april, is_aruco);
     }
 
     return 0;
@@ -828,13 +837,13 @@ int main(int argc, char **argv){
 
 
 void CreatePatterns(const string& input_dir, const string& output_dir,
-        const string& src_file, bool is_charuco){
+        const string& src_file, bool is_charuco, bool is_april, bool is_aruco){
 
     string pattern_dir = output_dir + "patterns/";
 
     mkdir(pattern_dir.c_str(),  S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
 
-    PatternsCreated P_Class(input_dir, pattern_dir, src_file, false, is_charuco, true);
+    PatternsCreated P_Class(input_dir, pattern_dir, src_file, false, is_charuco, is_april, is_aruco, true);
 
 }
 
@@ -845,7 +854,7 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
         int max_internal_read, int max_internal_use, int max_external_positions, int selectedk,
         int number_points_needed_to_count_pattern, int synchronized_rotating_option, float percentage_global_alg,
         float percentage_global_rp,
-        const bool is_charuco, const bool is_april, const bool interleavedSolve,
+        const bool is_charuco, const bool is_april, const bool is_aruco, const bool interleavedSolve,
         const CalicoOptions& options){
 
     // Quiet mode: redirect stdout at fd level (avoids streambuf heap corruption)
@@ -860,7 +869,8 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
     }
     bool show_progress = options.show_progress && !options.no_progress;
 
-    cout << "is charuco, is april " << is_charuco << ", " << is_april << endl;
+    cout << "is charuco, is april, is aruco " << is_charuco << ", " << is_april
+         << ", " << is_aruco << endl;
 
     int number_not_in = 0;
 
@@ -888,7 +898,7 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
 
     PatternsCreated* P_Class = 0;
 
-    P_Class = new PatternsCreated(input_dir, pattern_dir, src_file, false, is_charuco, false);
+    P_Class = new PatternsCreated(input_dir, pattern_dir, src_file, false, is_charuco, is_april, is_aruco, false);
 
     string temp;  int number_cameras;
     string id_camera_dir;
@@ -1442,7 +1452,8 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
         json_out << "  \"duration_sec\": " << total_sec << "," << endl;
         json_out << "  \"opencv\": \"" << CV_MAJOR_VERSION << "." << CV_MINOR_VERSION << "." << CV_SUBMINOR_VERSION << "\"," << endl;
         json_out << "  \"cuda\": " << (g_use_cuda ? "true" : "false") << "," << endl;
-        json_out << "  \"pattern\": \"" << (is_charuco ? "charuco" : "april") << "\"," << endl;
+        json_out << "  \"pattern\": \""
+                 << (is_charuco ? "charuco" : (is_aruco ? "aruco" : "april")) << "\"," << endl;
         json_out << "  \"cameras\": [" << endl;
         for (int i = 0; i < number_cameras; i++) {
             json_out << "    {" << endl;
@@ -1569,7 +1580,8 @@ void PrintDetectionSummary(const vector<CameraCali*>& CCV,
 }
 
 void DryRunValidation(const string& input_dir, const string& output_dir,
-        const string& src_file, bool is_charuco) {
+        const string& src_file, bool is_charuco, bool is_april, bool is_aruco) {
+    (void)is_april;
 
     cout << "\n=== DRY RUN ===" << endl;
 
@@ -1586,13 +1598,15 @@ void DryRunValidation(const string& input_dir, const string& output_dir,
     bool spec_ok = false;
     if (is_charuco) {
         spec_ok = readCharucoSpecificationFile(spec_file, pp);
+    } else if (is_aruco) {
+        spec_ok = readArucoGridSpecificationFile(spec_file, pp);
     } else {
         spec_ok = readAprilTagSpecificationFile(spec_file, pp);
     }
 
     if (spec_ok) {
         cout << "Pattern specification: " << endl;
-        cout << "  Type: " << (is_charuco ? "charuco" : "april") << endl;
+        cout << "  Type: " << (is_charuco ? "charuco" : (is_aruco ? "aruco" : "april")) << endl;
         cout << "  Boards: " << pp.numberBoards << endl;
         cout << "  Squares: " << pp.squaresX << " x " << pp.squaresY << endl;
         cout << "  Square length: " << pp.squareLength << " px" << endl;
@@ -1600,6 +1614,9 @@ void DryRunValidation(const string& input_dir, const string& output_dir,
         if (is_charuco) {
             cout << "  Marker length: " << pp.markerLength << " px" << endl;
             cout << "  Aruco dict code: " << pp.arc_code << endl;
+        } else if (is_aruco) {
+            cout << "  Aruco dict code: " << pp.arc_code << endl;
+            cout << "  Tag spacing: " << pp.tagSpace << " px" << endl;
         } else {
             cout << "  Tag family: " << NormalizeAprilFamily(pp.april_family) << endl;
             cout << "  Tag spacing: " << pp.tagSpace << " px" << endl;

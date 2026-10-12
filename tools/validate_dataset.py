@@ -40,6 +40,7 @@ ARUCO_CAPACITIES = {
     18: ("DICT_APRILTAG_25h9", 35),
     19: ("DICT_APRILTAG_36h10", 2320),
     20: ("DICT_APRILTAG_36h11", 587),
+    21: ("DICT_ARUCO_MIP_36h12", 250),
 }
 
 APRIL_CAPACITIES = {
@@ -216,8 +217,21 @@ def validate_dataset(dataset_dir: Path) -> Dict[str, Any]:
                     errors.append(
                         f"AprilTag overflow! {num_boards} grid(s) of {sq_x}x{sq_y} requires {total_needed} tags, but family {fam} capacity is only {capacity}."
                     )
+            elif pat_type in ("aruco", "arucop"):
+                arc_code = yaml_data.get("arcCode", 10)
+                summary["pattern"]["arcCode"] = arc_code
+                dict_name, capacity = ARUCO_CAPACITIES.get(arc_code, (f"Custom-{arc_code}", 250))
+                summary["pattern"]["dictionary"] = dict_name
+                summary["pattern"]["dict_capacity"] = capacity
+                total_needed = sq_x * sq_y * num_boards
+                if total_needed > capacity:
+                    errors.append(
+                        f"ArUco grid overflow! {num_boards} grid(s) of {sq_x}x{sq_y} requires {total_needed} markers, but {dict_name} capacity is only {capacity}."
+                    )
             else:
-                warnings.append(f"Unrecognized pattern type '{pat_type}'; expected 'charuco' or 'april'")
+                warnings.append(
+                    f"Unrecognized pattern type '{pat_type}'; expected 'charuco', 'april', or 'aruco'"
+                )
 
             # 3. Check pattern_square_mm<N>.txt files
             for i in range(num_boards):

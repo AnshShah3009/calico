@@ -1,0 +1,11 @@
+%YAML:1.0
+# ArUco marker grid (OpenCV GridBoard-style). Copy to <input>/network_specification_file.yaml
+# then: calico-dec2023 --aruco --create-patterns --input=... --output=...
+type: aruco
+squaresX: 6
+squaresY: 6
+squareLength: 80
+margins: 20
+tagSpace: 16
+numberBoards: 2
+arcCode: 10

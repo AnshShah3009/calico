@@ -71,7 +71,7 @@ ChArUco detection stays on CPU (OpenCV has no `cv::cuda::aruco`). `--use-cuda` s
 
 ## AprilTag grids
 
-`--april` (exclusive with `--charuco`) uses a grid of AprilTags (`squaresX` × `squaresY` tags, `tagSpace` gap, one or more `numberBoards`).
+`--april` (exclusive with `--charuco` / `--aruco`) uses a grid of AprilTags (`squaresX` × `squaresY` tags, `tagSpace` gap, one or more `numberBoards`).
 
 Supported families: `tag36h11` (default), `tag25h9`, `tag16h5`, `tag36h10` (OpenCV render + detect), plus Kaess `tag25h7` / `tag36h9` (detect-only; no pattern PNGs). Aliases such as `tagCodes36h11` are accepted.
 
@@ -81,9 +81,17 @@ Example specs: `configs/april-grid.yaml` (default 6×6 `tag36h11`) and `configs/
 
 ChArUco examples: `configs/charuco-grid.yaml` (default 7×5, `arcCode: 10` / `DICT_6X6_250`) and `configs/charuco-variants/` (`4X4` / `5X5` / `6X6` / `7X7` / AprilTag-backed boards). Generate with `--charuco --create-patterns`.
 
+## ArUco marker grids
+
+`--aruco` (exclusive with `--charuco` / `--april`) uses an OpenCV **GridBoard**-style grid of classic ArUco markers (`squaresX` × `squaresY` markers, `tagSpace` gap, `arcCode` dictionary, one or more `numberBoards`). Geometry and corner indexing match the AprilTag path (BL,BR,TR,TL remap from OpenCV TL,TR,BR,BL).
+
+Supported `arcCode` values include OpenCV predefined dictionaries `0`–`20` plus `21` = `DICT_ARUCO_MIP_36h12` (250 markers). Detection is CPU `ArucoDetector` (no `cv::cuda::aruco`); `--use-cuda` still GPU-converts BGR→gray and can use Ceres CUDA.
+
+Example specs: `configs/aruco-grid.yaml` (default 6×6, `arcCode: 10`) and `configs/aruco-variants/` (`4X4` / `6X6` / `7X7` / MIP 36h12). Generate with `--aruco --create-patterns`, then calibrate with `--aruco --calibrate`.
+
 ## Running
 
-`--charuco` or `--april` is **mandatory** (exclusive or). `--calibrate` or `--create-patterns` also mandatory.
+Exactly one of `--charuco`, `--april`, or `--aruco` is **mandatory**. `--calibrate` or `--create-patterns` also mandatory.
 
 ```bash
 ./calico-dec2023 --charuco --calibrate --input=<dir> --output=<dir> \

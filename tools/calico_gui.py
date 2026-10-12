@@ -45,7 +45,7 @@ SRC_DIR = WORKSPACE_DIR / "src"
 
 # Set in main() (or by tests). Required as Bearer token for mutating API routes.
 AUTH_TOKEN: str = os.environ.get("CALICO_STUDIO_TOKEN", "")
-ALLOWED_PATTERN_TYPES = frozenset({"charuco", "april"})
+ALLOWED_PATTERN_TYPES = frozenset({"charuco", "april", "aruco"})
 
 
 def detect_system_info() -> Dict[str, Any]:
@@ -820,6 +820,7 @@ STUDIO_HTML = """<!DOCTYPE html>
                 <select id="pattern-type">
                   <option value="charuco">ChArUco Board</option>
                   <option value="april">AprilTag Grid</option>
+                  <option value="aruco">ArUco Marker Grid</option>
                 </select>
               </div>
               <div class="form-group">

@@ -20,6 +20,8 @@ TEST_CASE(TestGetArucoDictionarySize) {
     ASSERT_EQ(GetArucoDictionarySize(3), 1000); // DICT_4X4_1000
     ASSERT_EQ(GetArucoDictionarySize(8), 50);   // DICT_6X6_50
     ASSERT_EQ(GetArucoDictionarySize(10), 250); // DICT_6X6_250
+    ASSERT_EQ(GetArucoDictionarySize(20), 587); // DICT_APRILTAG_36h11
+    ASSERT_EQ(GetArucoDictionarySize(21), 250); // DICT_ARUCO_MIP_36h12
     ASSERT_EQ(GetArucoDictionarySize(999), -1); // invalid code returns -1
 }
 
@@ -72,6 +74,33 @@ TEST_CASE(TestReadCharucoSpecification) {
     ASSERT_EQ(pp.arc_code, 10);
 }
 
+TEST_CASE(TestReadArucoGridSpecification) {
+    const std::string tmp_yaml = "/tmp/test_aruco_grid_spec.yaml";
+    std::ofstream ofs(tmp_yaml);
+    ofs << "%YAML:1.0\n"
+        << "type: aruco\n"
+        << "squaresX: 6\n"
+        << "squaresY: 6\n"
+        << "squareLength: 80\n"
+        << "margins: 20\n"
+        << "tagSpace: 16\n"
+        << "numberBoards: 2\n"
+        << "arcCode: 21\n";
+    ofs.close();
+
+    patternParameters pp;
+    bool ok = readArucoGridSpecificationFile(tmp_yaml, pp);
+    ASSERT_TRUE(ok);
+    ASSERT_EQ(pp.squaresX, 6);
+    ASSERT_EQ(pp.squaresY, 6);
+    ASSERT_EQ(pp.squareLength, 80);
+    ASSERT_NEAR(pp.tagSpace, 16.0f, 1e-4f);
+    ASSERT_EQ(pp.numberBoards, 2);
+    ASSERT_EQ(pp.arc_code, 21);
+    ASSERT_EQ(pp.type, arucop);
+    ASSERT_TRUE(ValidatePatternParams(pp, tmp_yaml));
+}
+
 TEST_CASE(TestReadNonExistentSpecification) {
     patternParameters pp;
     bool ok_april = readAprilTagSpecificationFile("/tmp/does_not_exist_98765.yaml", pp);
@@ -79,6 +108,9 @@ TEST_CASE(TestReadNonExistentSpecification) {
 
     bool ok_charuco = readCharucoSpecificationFile("/tmp/does_not_exist_98765.yaml", pp);
     ASSERT_FALSE(ok_charuco);
+
+    bool ok_aruco = readArucoGridSpecificationFile("/tmp/does_not_exist_98765.yaml", pp);
+    ASSERT_FALSE(ok_aruco);
 }
 
 TEST_CASE(TestValidatePatternParams) {

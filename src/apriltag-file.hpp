@@ -57,6 +57,10 @@ int DetectAprilTagGrid(const cv::Mat& gray, const std::string& family,
         AprilTags::TagDetector* kaess,
         std::vector<AprilTags::TagDetection>& detections);
 
+// OpenCV ArUco dictionary grid detection; corners remapped to April CCW-from-BL.
+int DetectArucoMarkerGrid(const cv::Mat& gray, int arc_code,
+        std::vector<AprilTags::TagDetection>& detections);
+
 cv::Mat apriltag_to_image_local_black_border(apriltag_family_t *fam, int idx);
 
 cv::Mat RenderAprilTagMarker(const std::string& family, int idx, int side_px,

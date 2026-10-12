@@ -31,12 +31,17 @@ public:
     vector<Mat> april_images;
     bool is_charuco;
     bool is_april;
+    bool is_aruco;
 
 
     PatternsCreated(const string& read_dir, const string& write_dir, const string& src_file,
-            bool rotate, const bool is_charuco_local, const bool generate_only);
+            bool rotate, const bool is_charuco_local, const bool is_april_local,
+            const bool is_aruco_local, const bool generate_only);
 
     void ConstructAprilTagVersion(const string& read_dir, const string& write_dir,
+            const string& src_file, bool generate_only);
+
+    void ConstructArucoGridVersion(const string& read_dir, const string& write_dir,
             const string& src_file, bool generate_only);
 
     void ConstructCharucoVersionNoRotate(const string& read_dir, const string& write_dir,

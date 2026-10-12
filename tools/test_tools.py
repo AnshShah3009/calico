@@ -439,6 +439,46 @@ april_family: tag16h5
         self.assertFalse(res["valid"])
         self.assertTrue(any("overflow" in e.lower() for e in res["errors"]))
 
+    def test_valid_aruco_dataset(self):
+        from validate_dataset import validate_dataset
+        aruco_yaml = """%YAML:1.0
+type: aruco
+squaresX: 6
+squaresY: 6
+squareLength: 80
+margins: 20
+tagSpace: 16
+numberBoards: 2
+arcCode: 21
+"""
+        (self.root / "network_specification_file.yaml").write_text(aruco_yaml)
+        (self.root / "pattern_square_mm0.txt").write_text("squareLength_mm 40.0\n")
+        (self.root / "pattern_square_mm1.txt").write_text("squareLength_mm 40.0\n")
+        res = validate_dataset(self.root)
+        self.assertTrue(res["valid"])
+        self.assertEqual(res["summary"]["pattern"]["type"], "aruco")
+        self.assertEqual(res["summary"]["pattern"]["arcCode"], 21)
+        self.assertEqual(res["summary"]["pattern"]["dictionary"], "DICT_ARUCO_MIP_36h12")
+
+    def test_aruco_dictionary_overflow(self):
+        from validate_dataset import validate_dataset
+        # DICT_4X4_50 has 50 markers; 8x8 grid needs 64 per board.
+        bad_yaml = """%YAML:1.0
+type: aruco
+squaresX: 8
+squaresY: 8
+squareLength: 80
+margins: 20
+tagSpace: 16
+numberBoards: 1
+arcCode: 0
+"""
+        (self.root / "network_specification_file.yaml").write_text(bad_yaml)
+        (self.root / "pattern_square_mm0.txt").write_text("squareLength_mm 40.0\n")
+        res = validate_dataset(self.root)
+        self.assertFalse(res["valid"])
+        self.assertTrue(any("overflow" in e.lower() for e in res["errors"]))
+
     def test_real_repo_charuco_and_april_datasets(self):
         from validate_dataset import validate_dataset
         repo_root = Path(__file__).resolve().parent.parent
@@ -864,6 +904,151 @@ class TestCharucoBoardVariants(unittest.TestCase):
         self.assertTrue(cfg_dir.is_dir())
         found = {p.name for p in cfg_dir.glob("charuco-*.yaml")}
         self.assertTrue(expected.issubset(found))
+
+
+class TestArucoGridVariants(unittest.TestCase):
+    """Render CALICO-style ArUco GridBoard patterns and detect all markers."""
+
+    @staticmethod
+    def _render_grid(dict_id: int, sx: int, sy: int, side: int = 64, gap: int = 12, margins: int = 16):
+        dictionary = cv2.aruco.getPredefinedDictionary(dict_id)
+        w = sx * (side + gap) - gap + 2 * margins
+        h = sy * (side + gap) - gap + 2 * margins
+        board = np.full((h, w), 255, dtype=np.uint8)
+        start_x = margins
+        start_y = h - side - margins
+        tag_id = 0
+        for y in range(sy):
+            for x in range(sx):
+                marker = np.zeros((side, side), dtype=np.uint8)
+                dictionary.generateImageMarker(tag_id, side, marker, 1)
+                x0 = start_x + x * (side + gap)
+                y0 = start_y - y * (side + gap)
+                board[y0:y0 + side, x0:x0 + side] = marker
+                tag_id += 1
+        return board, dictionary
+
+    def test_dicts_and_sizes_detect_all_markers(self):
+        cases = [
+            (cv2.aruco.DICT_4X4_50, 5, 5),
+            (cv2.aruco.DICT_5X5_100, 4, 4),
+            (cv2.aruco.DICT_6X6_250, 6, 6),
+            (cv2.aruco.DICT_7X7_250, 5, 5),
+            (cv2.aruco.DICT_ARUCO_ORIGINAL, 6, 5),
+            (cv2.aruco.DICT_ARUCO_MIP_36h12, 6, 6),
+        ]
+        for dict_id, sx, sy in cases:
+            with self.subTest(dict_id=dict_id, grid=f"{sx}x{sy}"):
+                board, dictionary = self._render_grid(dict_id, sx, sy)
+                det = cv2.aruco.ArucoDetector(dictionary, cv2.aruco.DetectorParameters())
+                _corners, ids, _rej = det.detectMarkers(board)
+                self.assertIsNotNone(ids)
+                self.assertEqual(len(ids), sx * sy)
+
+    def test_aruco_variant_configs_exist(self):
+        cfg_dir = Path(__file__).resolve().parent.parent / "configs" / "aruco-variants"
+        expected = {
+            "aruco-4x4-5x5.yaml",
+            "aruco-6x6-6x6.yaml",
+            "aruco-7x7-5x5.yaml",
+            "aruco-mip36h12-6x6.yaml",
+        }
+        self.assertTrue(cfg_dir.is_dir())
+        found = {p.name for p in cfg_dir.glob("aruco-*.yaml")}
+        self.assertTrue(expected.issubset(found))
+        self.assertTrue((Path(__file__).resolve().parent.parent / "configs" / "aruco-grid.yaml").is_file())
+
+
+class TestArucoGridCalibration(unittest.TestCase):
+    """Synthetic multi-view ArUco grid calibration (detect → calibrateCamera → poses)."""
+
+    @staticmethod
+    def _pose_T(R, t):
+        T = np.eye(4)
+        T[:3, :3] = R
+        T[:3, 3] = np.asarray(t).ravel()
+        return T
+
+    def test_gridboard_multiview_intrinsics_and_relative_pose(self):
+        sx, sy = 5, 4
+        square_m, sep_m = 0.04, 0.008
+        dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
+        grid = cv2.aruco.GridBoard((sx, sy), square_m, sep_m, dictionary)
+
+        img_w, img_h = 640, 480
+        K = np.array([[500.0, 0.0, img_w / 2.0], [0.0, 500.0, img_h / 2.0], [0.0, 0.0, 1.0]], dtype=np.float64)
+        dist = np.zeros(5, dtype=np.float64)
+
+        obj_all, img_all, poses = [], [], []
+        view_params = [(-0.3, -0.05), (0.0, 0.0), (0.35, 0.06), (-0.2, 0.04)]
+        for yaw, tx in view_params:
+            R, _ = cv2.Rodrigues(np.array([0.15, yaw, 0.05], dtype=np.float64))
+            t = np.array([[tx], [0.02], [0.55]], dtype=np.float64)
+            rvec, _ = cv2.Rodrigues(R)
+            obj_pts = []
+            for op in grid.getObjPoints():
+                obj_pts.extend(op)
+            obj_pts = np.asarray(obj_pts, dtype=np.float32)
+            img_pts, _ = cv2.projectPoints(obj_pts, rvec, t, K, dist)
+            obj_all.append(obj_pts)
+            img_all.append(img_pts.reshape(-1, 2).astype(np.float32))
+            poses.append((R, t))
+
+        rms, K_out, _dist_out, rvecs, tvecs = cv2.calibrateCamera(
+            obj_all, img_all, (img_w, img_h), K.copy(), dist.copy(),
+            flags=cv2.CALIB_USE_INTRINSIC_GUESS,
+        )
+        self.assertLess(rms, 0.05)
+        self.assertLess(abs(K_out[0, 0] - K[0, 0]), 1.0)
+        self.assertLess(abs(K_out[1, 1] - K[1, 1]), 1.0)
+
+        def from_rv(r, t):
+            R, _ = cv2.Rodrigues(r)
+            return self._pose_T(R, t)
+
+        T0 = self._pose_T(*poses[0])
+        T1 = self._pose_T(*poses[1])
+        Tr0 = from_rv(rvecs[0], tvecs[0])
+        Tr1 = from_rv(rvecs[1], tvecs[1])
+        rel_gt = np.linalg.inv(T0) @ T1
+        rel_est = np.linalg.inv(Tr0) @ Tr1
+        Rerr = rel_gt[:3, :3].T @ rel_est[:3, :3]
+        ang = float(np.degrees(np.arccos(np.clip((np.trace(Rerr) - 1) / 2, -1, 1))))
+        terr_mm = float(np.linalg.norm(rel_gt[:3, 3] - rel_est[:3, 3]) * 1000)
+        self.assertLess(ang, 0.5)
+        self.assertLess(terr_mm, 10.0)
+
+    def test_detect_then_calibrate_mip36h12(self):
+        """Render MIP 36h12 grid, detect markers, recover pose via solvePnP."""
+        dict_id = cv2.aruco.DICT_ARUCO_MIP_36h12
+        sx, sy = 5, 4
+        side, gap, margins = 80, 16, 20
+        board, dictionary = TestArucoGridVariants._render_grid(dict_id, sx, sy, side, gap, margins)
+        det = cv2.aruco.ArucoDetector(dictionary, cv2.aruco.DetectorParameters())
+        corners, ids, _rej = det.detectMarkers(board)
+        self.assertIsNotNone(ids)
+        self.assertEqual(len(ids), sx * sy)
+
+        square_m, sep_m = 0.04, 0.04 * (gap / side)
+        grid = cv2.aruco.GridBoard((sx, sy), square_m, sep_m, dictionary)
+        obj_pts, img_pts = grid.matchImagePoints(corners, ids)
+        self.assertGreaterEqual(len(obj_pts), sx * sy * 4)
+
+        K = np.array([[700.0, 0.0, board.shape[1] / 2.0],
+                      [0.0, 700.0, board.shape[0] / 2.0],
+                      [0.0, 0.0, 1.0]], dtype=np.float64)
+        dist = np.zeros(5, dtype=np.float64)
+        # Frontal view of a planar board: use projected correspondences for a known pose.
+        rvec_gt = np.array([0.12, -0.18, 0.04], dtype=np.float64)
+        tvec_gt = np.array([0.01, -0.02, 0.70], dtype=np.float64)
+        proj, _ = cv2.projectPoints(obj_pts, rvec_gt, tvec_gt, K, dist)
+        ok, rvec, tvec = cv2.solvePnP(obj_pts, proj, K, dist, flags=cv2.SOLVEPNP_IPPE)
+        self.assertTrue(ok)
+        self.assertLess(float(np.linalg.norm(rvec.ravel() - rvec_gt)), 1e-3)
+        self.assertLess(float(np.linalg.norm(tvec.ravel() - tvec_gt)), 1e-3)
+        reproj, _ = cv2.projectPoints(obj_pts, rvec, tvec, K, dist)
+        rms = float(np.sqrt(np.mean(np.sum((reproj.reshape(-1, 2) - proj.reshape(-1, 2)) ** 2, axis=1))))
+        self.assertLess(rms, 1e-3)
 
 
 if __name__ == "__main__":

@@ -49,6 +49,8 @@ bool readCharucoSpecificationFile(string filename, patternParameters &params);
 
 bool readAprilTagSpecificationFile(string filename, patternParameters &params);
 
+bool readArucoGridSpecificationFile(string filename, patternParameters &params);
+
 int GetArucoDictionarySize(int arc_code);
 
 bool ValidatePatternParams(const patternParameters& pp, const string& spec_file);

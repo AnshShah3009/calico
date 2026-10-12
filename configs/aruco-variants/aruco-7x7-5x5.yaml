@@ -1,0 +1,10 @@
+%YAML:1.0
+# Variant arcCode=14 5x5
+type: aruco
+squaresX: 5
+squaresY: 5
+squareLength: 72
+margins: 20
+tagSpace: 14
+numberBoards: 2
+arcCode: 14

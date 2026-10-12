@@ -9,6 +9,7 @@
 #include "helper-cali.hpp"
 #include "helper.hpp"
 #include "pattern-parameters.hpp"
+#include "apriltag-file.hpp"
 #include <numeric>
 
 // used 11/27
@@ -248,6 +249,174 @@ void PatternsCreated::ConstructAprilTagVersion(const string& read_dir, const str
 
 }
 
+// ArUco marker grid (OpenCV GridBoard-style): same 3D layout as AprilTag grids.
+void PatternsCreated::ConstructArucoGridVersion(const string& read_dir, const string& write_dir,
+        const string& src_file, bool generate_only){
+
+    assert(is_aruco == true);
+    assert(is_aruco && !rotate_case);
+
+    int count = 0;
+    string spec_file_path = read_dir + "/network_specification_file.yaml";
+    bool valid = readArucoGridSpecificationFile(spec_file_path, pp);
+    if (!ValidatePatternParams(pp, spec_file_path)) {
+        cout << "Pattern specification validation failed. Check errors above." << endl;
+        exit(1);
+    }
+
+    string filename_write = write_dir + "network_specification_file.yaml";
+    CopyFile(spec_file_path, filename_write);
+
+    if (!valid){
+        cout << "Parameter read did not work. " << spec_file_path << endl;
+        exit(1);
+    }
+
+    cout << "ArUco grid: " << pp.squaresX << " x " << pp.squaresY
+         << " markers, " << pp.numberBoards << " board(s), arcCode " << pp.arc_code << endl;
+
+    Size imageSize;
+    int margins = pp.margins;
+    imageSize.width = pp.squaresX * (pp.squareLength + pp.tagSpace) - pp.tagSpace + 2*margins;
+    imageSize.height = pp.squaresY * (pp.squareLength + pp.tagSpace) - pp.tagSpace + 2*margins;
+
+    number_corners_per_pattern = pp.squaresX*pp.squaresY*4;
+    number_markers_per_pattern = pp.squaresX*pp.squaresY;
+
+    int start_x_coordinate = margins;
+    int start_y_coordinate = imageSize.height - (pp.squareLength) - margins;
+
+    ofstream out;
+    dictionary = CalicoGetDictionary(pp.arc_code);
+    detectorParams = CalicoCreateDetectorParams();
+    bool readOk = readDetectorParameters(src_file, detectorParams);
+    if(!readOk) {
+        cout << "Invalid detector parameters file, quitting " << src_file << endl;
+        exit(1);
+    }
+
+    max_internal_patterns = 0;
+    internalx = 0;  internaly = 0;
+
+    string returnString;
+    string filename;
+    int x0, y0;
+
+    for (int i = 0, s = 0; i < pp.numberBoards; i++){
+        april_images.push_back(Mat::zeros(imageSize.height, imageSize.width, CV_8UC1));
+        april_images[i].setTo(255);
+        pattern_start_marker_indexes.push_back(s);
+
+        for (int y = 0; y < pp.squaresY; y++){
+            for (int x = 0; x < pp.squaresX; x++){
+                Mat markerImg;
+#if CALICO_ARUCO_MODERN
+                dictionary->generateImageMarker(count, pp.squareLength, markerImg, 1);
+#else
+                aruco::drawMarker(dictionary, count, pp.squareLength, markerImg, 1);
+#endif
+                if (markerImg.empty()) {
+                    cout << "Could not render ArUco id " << count << " for arcCode "
+                         << pp.arc_code << endl;
+                    exit(1);
+                }
+                if (markerImg.channels() == 3) {
+                    cvtColor(markerImg, markerImg, COLOR_BGR2GRAY);
+                }
+                if (markerImg.size() != Size(pp.squareLength, pp.squareLength)) {
+                    Mat resized;
+                    resize(markerImg, resized, Size(pp.squareLength, pp.squareLength), 0, 0, INTER_NEAREST);
+                    markerImg = resized;
+                }
+                x0 = start_x_coordinate + x*(pp.squareLength + pp.tagSpace);
+                y0 = start_y_coordinate - y*(pp.squareLength + pp.tagSpace);
+                Rect R = Rect(x0, y0, pp.squareLength, pp.squareLength);
+                markerImg.copyTo(april_images[i](R));
+                count++;
+            }
+        }
+
+        filename = write_dir + "pattern" + ToString<int>(i) + ".png";
+        imwrite(filename.c_str(), april_images[i]);
+
+        Mat boardCopy = april_images[i].clone();
+        if (boardCopy.channels() == 1) {
+            cvtColor(boardCopy, boardCopy, COLOR_GRAY2BGR);
+        }
+        vector<AprilTags::TagDetection> detections;
+        DetectArucoMarkerGrid(april_images[i], pp.arc_code, detections);
+        for (uint j = 0; j < detections.size(); j++) {
+            detections[j].draw(boardCopy);
+            int pattern_index = detections[j].id / number_markers_per_pattern;
+            Scalar b_color = Color(pattern_index);
+            for (uint k = 0; k < 4; k++){
+                Point2f p(detections[j].p[k].first, detections[j].p[k].second);
+                int grid_index = ConvertAprilMarkerIdIndexToGridPointIndex(
+                        pp.squaresX, detections[j].id, k, pattern_start_marker_indexes[pattern_index]);
+                circle(boardCopy, p, 2, b_color, 1);
+                putText(boardCopy, ToString<int>(grid_index), p, FONT_HERSHEY_SIMPLEX, 0.4, b_color, 1);
+            }
+        }
+        filename = write_dir + "BoardWithArucoLabels" + ToString<int>(i) + ".png";
+        imwrite(filename.c_str(), boardCopy);
+        s += number_markers_per_pattern;
+    }
+
+    number_total_markers = pp.squaresX * pp.squaresY * pp.numberBoards;
+    number_total_squares = number_total_markers;
+
+    if (!generate_only) {
+        vector<float> board_square_mm(pp.numberBoards, 0.f);
+        vector<float> board_tagspace_mm(pp.numberBoards, 0.f);
+        for (int b = 0; b < pp.numberBoards; b++) {
+            filename = read_dir + "pattern_square_mm" + ToString<int>(b) + ".txt";
+            returnString = FindValueOfFieldInFile(filename, "squareLength_mm", false, true);
+            board_square_mm[b] = FromString<float>(returnString);
+            double margin_ratio = (pp.squareLength > 0)
+                ? double(pp.tagSpace) / double(pp.squareLength) : 0.0;
+            board_tagspace_mm[b] = board_square_mm[b] * margin_ratio;
+            filename_write = write_dir + "pattern_square_mm" + ToString<int>(b) + ".txt";
+            CopyFile(filename, filename_write);
+        }
+        if (pp.numberBoards > 0) {
+            pp.squareLength_mm = board_square_mm[0];
+            pp.tagSpace_mm = board_tagspace_mm[0];
+        }
+
+        three_d_points = vector<cv::Point3f>(pp.numberBoards * number_corners_per_pattern, cv::Point3f());
+        int sm = 0;
+        int sc = 0;
+        for (int b = 0; b < pp.numberBoards; b++) {
+            const float square_mm = board_square_mm[b];
+            const float pitch = square_mm + board_tagspace_mm[b];
+            vector<int> current_index(pp.squaresX * pp.squaresY, 0);
+            for (int m = 0; m < pp.squaresX * pp.squaresY; m++, sc++) {
+                current_index[m] = sc;
+            }
+            pattern_id_marker_indexes_to_vector.push_back(current_index);
+
+            for (int r = 0; r < pp.squaresY; r++) {
+                for (int c = 0; c < pp.squaresX; c++) {
+                    three_d_points[sm++] = Point3f(pitch * float(c), pitch * float(r), 0);
+                    three_d_points[sm++] = Point3f(pitch * float(c) + square_mm, pitch * float(r), 0);
+                }
+                for (int c = 0; c < pp.squaresX; c++) {
+                    three_d_points[sm++] = Point3f(pitch * float(c), pitch * float(r) + square_mm, 0);
+                    three_d_points[sm++] = Point3f(pitch * float(c) + square_mm,
+                            pitch * float(r) + square_mm, 0);
+                }
+            }
+        }
+    } else {
+        for (int b = 0; b < pp.numberBoards; b++) {
+            filename_write = write_dir + "pattern_square_mm" + ToString<int>(b) + ".txt";
+            out.open(filename_write.c_str());
+            out << "squareLength_mm  XX" << endl;
+            out.close();
+        }
+    }
+}
+
 // used 11/27
 void PatternsCreated::ConstructCharucoVersionNoRotate(const string& read_dir, const string& write_dir, const string& src_file, bool generate_only){
 
@@ -459,32 +628,41 @@ PatternsCreated::PatternsCreated(const string& read_dir,
         const string& src_file,
         bool rotate,
         const bool is_charuco_local,
+        const bool is_april_local,
+        const bool is_aruco_local,
         const bool generate_only):
         rotate_case(rotate),
         max_internal_patterns(0),
         internalx(0), internaly(0),
-        is_charuco(is_charuco_local), is_april(!is_charuco_local),
+        is_charuco(is_charuco_local),
+        is_april(is_april_local),
+        is_aruco(is_aruco_local),
         number_total_squares(0), number_total_markers(0),
         number_markers_per_pattern(0), number_corners_per_pattern(0) {
 
 
     cout << "Is charuco?"  << is_charuco << endl;
     cout << "Is april?"  << is_april << endl;
+    cout << "Is aruco grid?"  << is_aruco << endl;
 
     string spec_file_path = read_dir + "network_specification_file.yaml";
 
+    const int mode_count = int(is_charuco) + int(is_april) + int(is_aruco);
+    if (mode_count != 1) {
+        cout << "Exactly one of charuco / april / aruco must be selected." << endl;
+        exit(1);
+    }
+
     if (is_april){
         ConstructAprilTagVersion(read_dir, write_dir, src_file, generate_only);
-    }   else {
-        if (!rotate_case){
-
-            ConstructCharucoVersionNoRotate(read_dir, write_dir, src_file, generate_only);
-        }   else {
-            cout << "This version of the code does not deal with the rotation case. " << endl;
-            cout << __FILE__ << ", line number " << __LINE__ << endl;
-            exit(1);
-
-        }
+    } else if (is_aruco) {
+        ConstructArucoGridVersion(read_dir, write_dir, src_file, generate_only);
+    } else if (!rotate_case) {
+        ConstructCharucoVersionNoRotate(read_dir, write_dir, src_file, generate_only);
+    } else {
+        cout << "This version of the code does not deal with the rotation case. " << endl;
+        cout << __FILE__ << ", line number " << __LINE__ << endl;
+        exit(1);
     }
 
     if (!ValidatePatternParams(pp, spec_file_path)) {

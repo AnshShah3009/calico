@@ -8,6 +8,7 @@
 
 #include "apriltag-file.hpp"
 #include "helper.hpp"
+#include "pattern-parameters.hpp"
 #include "cuda-detect.hpp"
 #include <cctype>
 #include <mutex>
@@ -242,6 +243,42 @@ int DetectAprilTagGrid(const Mat& gray, const string& family,
     }
 
     return 0;
+}
+
+int DetectArucoMarkerGrid(const Mat& gray, int arc_code,
+        vector<AprilTags::TagDetection>& detections) {
+    detections.clear();
+    if (gray.empty() || GetArucoDictionarySize(arc_code) < 0) {
+        return 0;
+    }
+#if CALICO_ARUCO_MODERN
+    Ptr<aruco::Dictionary> dict = CalicoGetDictionary(arc_code);
+    Ptr<aruco::DetectorParameters> params = CalicoCreateDetectorParams();
+    vector<vector<Point2f> > corners, rejected;
+    vector<int> ids;
+    CalicoDetectMarkers(gray, dict, corners, ids, params, rejected);
+    detections.reserve(ids.size());
+    for (size_t i = 0; i < ids.size(); i++) {
+        AprilTags::TagDetection d;
+        d.id = ids[i];
+        d.good = true;
+        const vector<Point2f>& c = corners[i];
+        if (c.size() < 4) {
+            continue;
+        }
+        // OpenCV ArUco: TL,TR,BR,BL → April/Kaess: BL,BR,TR,TL
+        d.p[0] = std::make_pair(c[3].x, c[3].y);
+        d.p[1] = std::make_pair(c[2].x, c[2].y);
+        d.p[2] = std::make_pair(c[1].x, c[1].y);
+        d.p[3] = std::make_pair(c[0].x, c[0].y);
+        detections.push_back(d);
+    }
+    return int(detections.size());
+#else
+    (void)gray;
+    (void)arc_code;
+    return 0;
+#endif
 }
 
 Mat RenderAprilTagMarker(const string& family, int idx, int side_px, apriltag_family_t* tf) {

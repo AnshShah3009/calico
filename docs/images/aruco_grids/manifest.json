@@ -1,0 +1,50 @@
+[
+  {
+    "label": "4X4_50 5\u00d75",
+    "arc": 0,
+    "ok": true,
+    "detected": 25,
+    "expected": 25,
+    "detect": "aruco_0_5x5_detect.png"
+  },
+  {
+    "label": "6X6_250 6\u00d76",
+    "arc": 10,
+    "ok": true,
+    "detected": 36,
+    "expected": 36,
+    "detect": "aruco_10_6x6_detect.png"
+  },
+  {
+    "label": "MIP_36h12 6\u00d76",
+    "arc": 21,
+    "ok": true,
+    "detected": 36,
+    "expected": 36,
+    "detect": "aruco_21_6x6_detect.png"
+  },
+  {
+    "label": "7X7_250 5\u00d75",
+    "arc": 14,
+    "ok": true,
+    "detected": 25,
+    "expected": 25,
+    "detect": "aruco_14_5x5_detect.png"
+  },
+  {
+    "label": "5X5_100 4\u00d74",
+    "arc": 5,
+    "ok": true,
+    "detected": 16,
+    "expected": 16,
+    "detect": "aruco_5_4x4_detect.png"
+  },
+  {
+    "label": "ORIGINAL 6\u00d75",
+    "arc": 16,
+    "ok": true,
+    "detected": 30,
+    "expected": 30,
+    "detect": "aruco_16_6x5_detect.png"
+  }
+]

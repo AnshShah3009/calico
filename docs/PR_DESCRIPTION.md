@@ -21,7 +21,7 @@ This pull request modernizes **CALICO** (Camera Calibration with Incremental Cer
 9. **Ground-Truth Simulation Benchmarks** in MuJoCo for both AprilTag grids and ChArUco targets.
 10. **Automated Testing & CI/CD**:
    - CTest C++ unit test suite in Docker (`calico_tests`).
-   - Python unit test suite (`tools/test_tools.py`) with dual AprilTag and ChArUco coverage.
+   - Python unit test suite (`tools/test_tools.py`) with AprilTag, ChArUco, and ArUco GridBoard coverage.
    - GitHub Actions CI verifying Python tools, and both `calico-cpu` and `calico-cuda` Docker builds.
 
 ---
@@ -61,6 +61,11 @@ OpenCV `CharucoBoard` generate + `CharucoDetector` across `4X4` / `5X5` / `6X6` 
 
 ![ChArUco board variants](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/charuco_boards_gallery.png)
 
+### 6. ArUco Marker Grids (GridBoard-style, including MIP 36h12)
+New `--aruco` mode: classic ArUco marker grids (same geometry/corner indexing as AprilTag grids) with OpenCV dictionaries `0`–`20` plus `DICT_ARUCO_MIP_36h12` (`arcCode: 21`). Render + detect gallery (6/6) and synthetic multi-view `calibrateCamera` / `solvePnP` verification in `tools/test_tools.py`. Specs: `configs/aruco-grid.yaml`, `configs/aruco-variants/`.
+
+![ArUco grid variants](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/aruco_grids_gallery.png)
+
 ---
 
 ## Ground-Truth Verification Thresholds
@@ -76,7 +81,7 @@ Enforced by `sim/verify_mujoco_april.py` / `sim/verify_mujoco_charuco.py` (no `-
 
 Pose checks assert the `inv(T)` convention (calibration.json `T_world_camera` is camera-from-world) and do not min() over both conventions.
 
-**Local checks for this update:** `python3 tools/test_tools.py` (AprilTag multi-family grids + ChArUco dict×size boards). Showcase images from MuJoCo runs + pattern-variant galleries.
+**Local checks for this update:** `python3 tools/test_tools.py` (AprilTag / ChArUco / ArUco grids + synthetic ArUco multi-view calibration). Showcase images from MuJoCo runs + pattern-variant galleries.
 
 ---
 
@@ -97,7 +102,10 @@ Pose checks assert the `inv(T)` convention (calibration.json `T_world_camera` is
 - Wizard presets, live solver terminal, 3D visualizer, export hub.
 
 ### 4. Pre-Flight Dataset Validator (`tools/validate_dataset.py`)
-- Frame sync, resolution consistency, ChArUco/AprilTag capacity checks, `pattern_square_mm*.txt` presence.
+- Frame sync, resolution consistency, ChArUco/AprilTag/ArUco capacity checks, `pattern_square_mm*.txt` presence.
+
+### 4b. ArUco GridBoard calibration (`--aruco`)
+- Pattern create/detect/calibrate path parallel to AprilTag grids; `arcCode` dictionaries including MIP 36h12; CLI/config/GUI/validator wired.
 
 ### 5. Multi-Format Calibration Exporter (`tools/export_calibration.py`)
 - ROS CameraInfo, Nerfstudio `transforms.json`, COLMAP, OpenCV FileStorage; safe camera names; prefers JSON `width`/`height`.

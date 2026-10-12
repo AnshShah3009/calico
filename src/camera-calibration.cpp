@@ -354,7 +354,7 @@ void CameraCali::FindCornersCharuco(const string& write_dir, bool write_internal
 // used 11/24
 void CameraCali::FindCornersApril(const string& write_dir, bool write_internal_images ){
 
-    assert(P_class->is_april && P_class->rotate_case == false);
+    assert((P_class->is_april || P_class->is_aruco) && P_class->rotate_case == false);
 
     int number_images = images.size();
     int number_corners_per = P_class->NumberCornersPerPattern();
@@ -404,8 +404,12 @@ void CameraCali::FindCornersApril(const string& write_dir, bool write_internal_i
             calico_cuda::BgrToGray(images[i], grayCopy);
 
             vector<AprilTags::TagDetection> detections;
-            DetectAprilTagGrid(grayCopy, P_class->pp.april_family,
-                    P_class->pp.ATObject.m_tagDetector, detections);
+            if (P_class->is_aruco) {
+                DetectArucoMarkerGrid(grayCopy, P_class->pp.arc_code, detections);
+            } else {
+                DetectAprilTagGrid(grayCopy, P_class->pp.april_family,
+                        P_class->pp.ATObject.m_tagDetector, detections);
+            }
 
             // print out each detection
             cout << detections.size() << " ID tags detected for image " << i << endl;
@@ -514,10 +518,8 @@ void CameraCali::FindCorners(const string& write_dir, bool write_internal_images
             cout << "This release does not have the rotate case!" << __LINE__ << " in " << __FILE__ << endl;
             exit(1);
         }
-    }   else {
-        if (P_class->is_april){
-            FindCornersApril(write_dir, write_internal_images);
-        }
+    }   else if (P_class->is_april || P_class->is_aruco) {
+        FindCornersApril(write_dir, write_internal_images);
     }
 }
 
