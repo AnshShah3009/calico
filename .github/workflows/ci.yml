@@ -33,6 +33,8 @@ jobs:
         run: |
           python -m py_compile tools/visualize_calibration.py
           python -m py_compile tools/export_calibration.py
+          python -m py_compile tools/validate_dataset.py
+          python -m py_compile tools/calico_gui.py
           python -m py_compile tools/ingest_video.py
           python -m py_compile tools/test_tools.py
           python -m py_compile sim/verify_mujoco_april.py
