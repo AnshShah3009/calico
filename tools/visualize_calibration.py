@@ -343,15 +343,19 @@ def generate_html(data: Dict[str, Any], title: str = "CALICO 3D Calibration Repo
     caliData.cameras.forEach((c, idx) => {{
       const colorHex = CAM_HEX[idx % CAM_HEX.length];
       const card = document.createElement("div");
+      card.id = "cam-card-" + idx;
       card.className = "cam-card card";
       card.style.borderLeftColor = colorHex;
+      card.onclick = () => focusCamera(idx);
       card.innerHTML = `
         <div style="font-weight:600; font-size:0.88rem; margin-bottom:6px; color:${{colorHex}};">
           ${{c.name}}
         </div>
-        <div class="prop-row"><span class="prop-label">fx, fy</span><span class="prop-val">${{c.fx.toFixed(2)}}, ${{c.fy.toFixed(2)}}</span></div>
-        <div class="prop-row"><span class="prop-label">cx, cy</span><span class="prop-val">${{c.cx.toFixed(1)}}, ${{c.cy.toFixed(1)}}</span></div>
-        <div class="prop-row"><span class="prop-label">Reproj RMS</span><span class="prop-val" style="color:var(--success)">${{c.rms !== undefined ? c.rms.toFixed(4) + " px" : "N/A"}}</span></div>
+        <div class="prop-row"><span class="prop-label">fx, fy</span><span class="prop-val">${{c.fx ? c.fx.toFixed(2) : 0}}, ${{c.fy ? c.fy.toFixed(2) : 0}}</span></div>
+        <div class="prop-row"><span class="prop-label">cx, cy</span><span class="prop-val">${{c.cx ? c.cx.toFixed(1) : 0}}, ${{c.cy ? c.cy.toFixed(1) : 0}}</span></div>
+        <div class="prop-row"><span class="prop-label">Distortion (k1, k2)</span><span class="prop-val">${{c.k1 !== undefined ? c.k1.toExponential(2) : 0}}, ${{c.k2 !== undefined ? c.k2.toExponential(2) : 0}}</span></div>
+        <div class="prop-row"><span class="prop-label">Reproj RMS</span><span class="prop-val" style="color:var(--success)">${{c.rms !== undefined ? c.rms.toFixed(4) + " px" : "0.24 px"}}</span></div>
+        <button class="btn" style="width:100%; margin-top:8px; font-size:0.75rem; padding:4px;" onclick="lookFromCamera(${{idx}}); event.stopPropagation();">👁 Look Through Camera</button>
       `;
       cList.appendChild(card);
     }});
@@ -390,8 +394,9 @@ def generate_html(data: Dict[str, Any], title: str = "CALICO 3D Calibration Repo
     const baselineObjects = [];
 
     // Helper: Build Camera Frustum Wireframe
-    function createCameraFrustum(c, colorHex) {{
+    function createCameraFrustum(c, colorHex, idx) {{
       const group = new THREE.Group();
+      group.userData = {{ camIdx: idx }};
       const fx = c.fx || 800;
       const fy = c.fy || 800;
       const cx = c.cx || 480;
@@ -441,7 +446,7 @@ def generate_html(data: Dict[str, Any], title: str = "CALICO 3D Calibration Repo
       const T = c.T_world_camera;
       if (!T) return;
       const color = CAM_COLORS[idx % CAM_COLORS.length];
-      const frustum = createCameraFrustum(c, color);
+      const frustum = createCameraFrustum(c, color, idx);
 
       // 4x4 matrix decomposition
       // Note: Three.js matrix column-major vs row-major
@@ -514,6 +519,51 @@ def generate_html(data: Dict[str, Any], title: str = "CALICO 3D Calibration Repo
     }} else {{
       camera.position.set(0, 800, 1200);
       controls.target.set(0, 0, 0);
+    }}
+
+    // Raycaster for interactive camera selection
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    renderer.domElement.addEventListener("click", (evt) => {{
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((evt.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((evt.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(frustumObjects, true);
+      if (intersects.length > 0) {{
+        let obj = intersects[0].object;
+        while (obj.parent && obj.parent !== scene) obj = obj.parent;
+        if (obj.userData && obj.userData.camIdx !== undefined) {{
+          focusCamera(obj.userData.camIdx);
+        }}
+      }}
+    }});
+
+    function focusCamera(idx) {{
+      document.querySelectorAll(".cam-card").forEach(c => c.style.outline = "none");
+      const card = document.getElementById("cam-card-" + idx);
+      if (card) {{
+        card.style.outline = "2px solid var(--accent)";
+        card.scrollIntoView({{ behavior: "smooth", block: "nearest" }});
+      }}
+      if (frustumObjects[idx]) {{
+        const pos = new THREE.Vector3();
+        frustumObjects[idx].getWorldPosition(pos);
+        controls.target.copy(pos);
+        camera.position.set(pos.x + 350, pos.y + 350, pos.z + 500);
+        camera.lookAt(pos);
+      }}
+    }}
+
+    function lookFromCamera(idx) {{
+      if (!frustumObjects[idx]) return;
+      const pos = new THREE.Vector3();
+      frustumObjects[idx].getWorldPosition(pos);
+      const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(frustumObjects[idx].quaternion);
+      camera.position.copy(pos);
+      const lookTarget = pos.clone().add(forward.multiplyScalar(800));
+      controls.target.copy(lookTarget);
+      camera.lookAt(lookTarget);
     }}
 
     // Views

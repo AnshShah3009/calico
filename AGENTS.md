@@ -139,6 +139,15 @@ MUJOCO_GL=osmesa python3 sim/verify_mujoco_april.py --use-cuda
 
 Verification thresholds: $f_x, f_y \le 1.0\text{ px}$, relative rotation $\le 0.5^\circ$, relative translation $\le 10\text{ mm}$, reprojection $\text{RMS} \le 1.5\text{ px}$.
 
+
+### CALICO Studio Web GUI
+Launch the zero-dependency browser interface to configure calibrations, monitor real-time optimization progress, inspect 3D camera frustums, and export to ROS/NeRF/COLMAP:
+
+```bash
+./tools/calico_gui.py --port 8080
+```
+Then visit `http://localhost:8080`.
+
 ### Interactive 3D WebGL / HTML Visualizer
 Generate an interactive Three.js 3D report from any CALICO output directory containing `calibration.json`:
 

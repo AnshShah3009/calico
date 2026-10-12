@@ -261,5 +261,109 @@ class TestVisualizeCalibration(unittest.TestCase):
         self.assertIn("CUDA", content)
 
 
+
+class TestCalicoGUI(unittest.TestCase):
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp_dir.name)
+        self.cali_data = {
+            "tool": "calico-dec2023",
+            "num_cameras": 2,
+            "duration_sec": 1.2,
+            "opencv": "5.0.0",
+            "cuda": True,
+            "pattern": "charuco",
+            "cameras": [
+                {
+                    "name": "cam0",
+                    "fx": 800.0,
+                    "fy": 800.0,
+                    "cx": 480.0,
+                    "cy": 360.0,
+                    "T_world_camera": [[1, 0, 0, -100], [0, 1, 0, 0], [0, 0, 1, 500], [0, 0, 0, 1]],
+                },
+                {
+                    "name": "cam1",
+                    "fx": 800.0,
+                    "fy": 800.0,
+                    "cx": 480.0,
+                    "cy": 360.0,
+                    "T_world_camera": [[1, 0, 0, 100], [0, 1, 0, 0], [0, 0, 1, 500], [0, 0, 0, 1]],
+                },
+            ],
+            "boards": [{"index": 0, "T_world_board": [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]}],
+        }
+        (self.root / "calibration.json").write_text(json.dumps(self.cali_data))
+
+    def tearDown(self):
+        self.tmp_dir.cleanup()
+
+    def test_detect_system_info(self):
+        from calico_gui import detect_system_info
+        info = detect_system_info()
+        self.assertIn("cpu_count", info)
+        self.assertIn("has_cuda", info)
+        self.assertIn("calico_bin", info)
+
+    def test_parse_calibration_json(self):
+        from calico_gui import parse_calibration_json
+        parsed = parse_calibration_json(self.root)
+        self.assertEqual(len(parsed["cameras"]), 2)
+        self.assertEqual(len(parsed["baselines"]), 1)
+        self.assertAlmostEqual(parsed["baselines"][0]["distance_mm"], 200.0, places=1)
+
+    def test_gui_http_server(self):
+        import urllib.request
+        import threading
+        import time
+        from calico_gui import ThreadingHTTPServer, StudioRequestHandler
+
+        # Pick an ephemeral port
+        server = ThreadingHTTPServer(("127.0.0.1", 0), StudioRequestHandler)
+        port = server.server_address[1]
+        t = threading.Thread(target=server.serve_forever, daemon=True)
+        t.start()
+        time.sleep(0.1)
+
+        try:
+            # 1. Test GET /
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/") as resp:
+                self.assertEqual(resp.status, 200)
+                body = resp.read().decode("utf-8")
+                self.assertIn("<title>CALICO Studio", body)
+
+            # 2. Test GET /api/status
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/status") as resp:
+                self.assertEqual(resp.status, 200)
+                status_json = json.loads(resp.read().decode("utf-8"))
+                self.assertIn("cpu_count", status_json)
+
+            # 3. Test GET /api/calibration
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/calibration?path={self.root}") as resp:
+                self.assertEqual(resp.status, 200)
+                cali_resp = json.loads(resp.read().decode("utf-8"))
+                self.assertEqual(len(cali_resp["cameras"]), 2)
+
+            # 4. Test GET /api/logs
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/logs") as resp:
+                self.assertEqual(resp.status, 200)
+                logs_resp = json.loads(resp.read().decode("utf-8"))
+                self.assertIn("status", logs_resp)
+
+            # 5. Test POST /api/export
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{port}/api/export",
+                data=json.dumps({"cali_dir": str(self.root), "format": "ros"}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+            with urllib.request.urlopen(req) as resp:
+                self.assertEqual(resp.status, 200)
+                exp_res = json.loads(resp.read().decode("utf-8"))
+                self.assertEqual(exp_res.get("returncode"), 0)
+        finally:
+            server.shutdown()
+            server.server_close()
+
 if __name__ == "__main__":
     unittest.main()
