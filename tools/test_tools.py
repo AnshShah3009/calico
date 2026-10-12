@@ -168,10 +168,39 @@ class TestExportCalibration(unittest.TestCase):
         D = fs.getNode("distortion_coefficients").mat()
         T = fs.getNode("transform_world_camera").mat()
         fs.release()
+
         self.assertEqual(K.shape, (3, 3))
         self.assertEqual(D.shape, (5, 1))
         self.assertEqual(T.shape, (4, 4))
         self.assertAlmostEqual(K[0, 0], 800.0)
+
+    def test_export_real_april_and_charuco(self):
+        repo_root = Path(__file__).resolve().parent.parent
+        script = Path(__file__).resolve().parent / "export_calibration.py"
+
+        # 1. Test AprilTag grid calibration export (results/april-gpu)
+        april_cali = repo_root / "results" / "april-gpu"
+        if april_cali.exists() and (april_cali / "calibration.json").exists():
+            out_april = self.root / "export_april"
+            subprocess.check_call([
+                sys.executable, str(script), str(april_cali), "--format", "all", "-o", str(out_april)
+            ])
+            self.assertTrue((out_april / "ros" / "cam0_camera_info.yaml").exists())
+            self.assertTrue((out_april / "nerfstudio" / "transforms.json").exists())
+            self.assertTrue((out_april / "colmap" / "cameras.txt").exists())
+            self.assertTrue((out_april / "opencv" / "cam0_opencv.yaml").exists())
+
+        # 2. Test ChArUco calibration export (results/run5)
+        charuco_cali = repo_root / "results" / "run5"
+        if charuco_cali.exists() and (charuco_cali / "calibration.json").exists():
+            out_charuco = self.root / "export_charuco"
+            subprocess.check_call([
+                sys.executable, str(script), str(charuco_cali), "--format", "all", "-o", str(out_charuco)
+            ])
+            self.assertTrue((out_charuco / "ros" / "111F816F_camera_info.yaml").exists())
+            self.assertTrue((out_charuco / "nerfstudio" / "transforms.json").exists())
+            self.assertTrue((out_charuco / "colmap" / "cameras.txt").exists())
+            self.assertTrue((out_charuco / "opencv" / "111F816F_opencv.yaml").exists())
 
 
 class TestIngestVideo(unittest.TestCase):
@@ -532,34 +561,92 @@ class TestCalicoGUI(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+
+class TestCharucoCudaAndCalibrationVerification(unittest.TestCase):
+    def setUp(self):
+        self.squares_x = 7
+        self.squares_y = 5
+        self.square_len = 0.04
+        self.marker_len = 0.03
+        self.dict_code = cv2.aruco.DICT_4X4_50
+        self.dictionary = cv2.aruco.getPredefinedDictionary(self.dict_code)
+        self.board = cv2.aruco.CharucoBoard(
+            (self.squares_x, self.squares_y), self.square_len, self.marker_len, self.dictionary
+        )
+
+    def test_charuco_cuda_gray_equivalence(self):
+        """Verify bit-exact corner detection consistency between color BGR and CUDA gray conversion."""
+        board_w, board_h = 700, 500
+        board_img = self.board.generateImage((board_w, board_h), marginSize=20)
+        bgr = cv2.cvtColor(board_img, cv2.COLOR_GRAY2BGR)
+
+        # Replicate raw CUDA kernel math: (p[0]*29 + p[1]*150 + p[2]*77) >> 8
+        b = bgr[:, :, 0].astype(np.uint32)
+        g = bgr[:, :, 1].astype(np.uint32)
+        r = bgr[:, :, 2].astype(np.uint32)
+        cuda_gray = ((b * 29 + g * 150 + r * 77) >> 8).astype(np.uint8)
+
+        detector = cv2.aruco.CharucoDetector(self.board)
+        corners_bgr, ids_bgr, _, _ = detector.detectBoard(bgr)
+        corners_gray, ids_gray, _, _ = detector.detectBoard(cuda_gray)
+
+        expected_corners = (self.squares_x - 1) * (self.squares_y - 1)
+        self.assertEqual(len(corners_bgr), expected_corners)
+        self.assertEqual(len(corners_gray), expected_corners)
+        np.testing.assert_array_equal(ids_bgr, ids_gray)
+
+        max_corner_diff = float(np.max(np.abs(corners_bgr - corners_gray)))
+        self.assertLess(max_corner_diff, 1e-4, "Detected corner coordinates differ between BGR and CUDA Gray")
+
+    def test_charuco_calibration_accuracy_and_reprojection(self):
+        """Verify calibration accuracy: 3D-to-2D projection, PnP camera pose recovery, and reprojection error."""
+        board_img = self.board.generateImage((700, 500), marginSize=20)
+        detector = cv2.aruco.CharucoDetector(self.board)
+        corners, ids, _, _ = detector.detectBoard(board_img)
+        obj_pts, _ = self.board.matchImagePoints(corners, ids)
+
+        K = np.array([[800.0, 0.0, 480.0], [0.0, 800.0, 360.0], [0.0, 0.0, 1.0]], dtype=np.float64)
+        dist_coeffs = np.zeros(5, dtype=np.float64)
+
+        # Test across multiple camera viewing angles
+        test_poses = [
+            (np.array([0.1, 0.2, 0.05]), np.array([0.0, 0.0, 0.8])),
+            (np.array([-0.15, 0.25, 0.1]), np.array([-0.05, 0.03, 0.75])),
+            (np.array([0.2, -0.1, -0.05]), np.array([0.08, -0.02, 0.85])),
+        ]
+
+        for rvec_gt, tvec_gt in test_poses:
+            proj_pts, _ = cv2.projectPoints(obj_pts, rvec_gt, tvec_gt, K, dist_coeffs)
+
+            num_sol, rvecs, tvecs, _ = cv2.solvePnPGeneric(
+                obj_pts, proj_pts, K, dist_coeffs, flags=cv2.SOLVEPNP_IPPE
+            )
+            self.assertGreaterEqual(num_sol, 1)
+
+            min_r_err = min(float(np.linalg.norm(r.flatten() - rvec_gt)) for r in rvecs)
+            min_t_err = min(float(np.linalg.norm(t.flatten() - tvec_gt)) for t in tvecs)
+            self.assertLess(min_r_err, 1e-4, f"Rotation error {min_r_err} exceeds 1e-4 rad")
+            self.assertLess(min_t_err, 1e-4, f"Translation error {min_t_err} exceeds 1e-4 m")
+
+            reproj, _ = cv2.projectPoints(obj_pts, rvecs[0], tvecs[0], K, dist_coeffs)
+            rms = float(np.sqrt(np.mean(np.sum((reproj.reshape(-1, 2) - proj_pts.reshape(-1, 2)) ** 2, axis=1))))
+            self.assertLess(rms, 1e-4, f"Reprojection RMS {rms} exceeds 1e-4 px")
+
+    def test_charuco_apriltag_dictionary_support(self):
+        """Verify ChArUco board with AprilTag dictionary (DICT_APRILTAG_36h11) used for cuAprilTags."""
+        april_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_36h11)
+        april_board = cv2.aruco.CharucoBoard((5, 4), 0.05, 0.038, april_dict)
+        board_img = april_board.generateImage((500, 400), marginSize=15)
+        detector = cv2.aruco.CharucoDetector(april_board)
+        corners, ids, _, _ = detector.detectBoard(board_img)
+
+        expected_corners = (5 - 1) * (4 - 1)
+        self.assertEqual(len(corners), expected_corners)
+        self.assertEqual(len(ids), expected_corners)
+
+
 if __name__ == "__main__":
     unittest.main()
-    def test_export_real_april_and_charuco(self):
-        repo_root = Path(__file__).resolve().parent.parent
-        script = Path(__file__).resolve().parent / "export_calibration.py"
 
-        # 1. Test AprilTag grid calibration export (results/april-gpu)
-        april_cali = repo_root / "results" / "april-gpu"
-        if april_cali.exists() and (april_cali / "calibration.json").exists():
-            out_april = self.root / "export_april"
-            subprocess.check_call([
-                sys.executable, str(script), str(april_cali), "--format", "all", "-o", str(out_april)
-            ])
-            self.assertTrue((out_april / "ros" / "cam0_camera_info.yaml").exists())
-            self.assertTrue((out_april / "nerfstudio" / "transforms.json").exists())
-            self.assertTrue((out_april / "colmap" / "cameras.txt").exists())
-            self.assertTrue((out_april / "opencv" / "cam0_opencv.yaml").exists())
-
-        # 2. Test ChArUco calibration export (results/run5)
-        charuco_cali = repo_root / "results" / "run5"
-        if charuco_cali.exists() and (charuco_cali / "calibration.json").exists():
-            out_charuco = self.root / "export_charuco"
-            subprocess.check_call([
-                sys.executable, str(script), str(charuco_cali), "--format", "all", "-o", str(out_charuco)
-            ])
-            self.assertTrue((out_charuco / "ros" / "111F816F_camera_info.yaml").exists())
-            self.assertTrue((out_charuco / "nerfstudio" / "transforms.json").exists())
-            self.assertTrue((out_charuco / "colmap" / "cameras.txt").exists())
-            self.assertTrue((out_charuco / "opencv" / "111F816F_opencv.yaml").exists())
 
 

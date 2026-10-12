@@ -192,8 +192,34 @@ void CameraCali::FindCornersCharuco(const string& write_dir, bool write_internal
 
         if ((max_internals_use == 0) || (internal_found_counter < max_internals_use) )
         {
-            // detect markers and estimate pose
-            CalicoDetectMarkers(images[i], P_class->dictionary, corners, ids, P_class->detectorParams, rejected);
+            cv::Mat grayImage;
+            calico_cuda::BgrToGray(images[i], grayImage);
+
+            bool detected_with_cuda_april = false;
+            if (g_use_cuda && P_class->pp.arc_code == 20) {
+                vector<AprilTags::TagDetection> detections;
+                if (calico_cuda::DetectAprilTags(grayImage, "tag36h11", detections) && !detections.empty()) {
+                    corners.clear();
+                    ids.clear();
+                    corners.reserve(detections.size());
+                    ids.reserve(detections.size());
+                    for (size_t di = 0; di < detections.size(); di++) {
+                        ids.push_back(detections[di].id);
+                        vector<Point2f> c(4);
+                        c[0] = Point2f(detections[di].p[3].first, detections[di].p[3].second);
+                        c[1] = Point2f(detections[di].p[2].first, detections[di].p[2].second);
+                        c[2] = Point2f(detections[di].p[1].first, detections[di].p[1].second);
+                        c[3] = Point2f(detections[di].p[0].first, detections[di].p[0].second);
+                        corners.push_back(c);
+                    }
+                    detected_with_cuda_april = true;
+                }
+            }
+
+            if (!detected_with_cuda_april) {
+                // detect markers and estimate pose
+                CalicoDetectMarkers(grayImage, P_class->dictionary, corners, ids, P_class->detectorParams, rejected);
+            }
 
             // draw results -- dealing with the possibility of more than one board per image.
             if(ids.size() > 0) {
@@ -215,12 +241,12 @@ void CameraCali::FindCornersCharuco(const string& write_dir, bool write_internal
                                 board_corners, board_ids);
 
 #if CALICO_ARUCO_MODERN
-                        CalicoInterpolateCharuco(images.at(i), P_class->boards.at(p),
+                        CalicoInterpolateCharuco(grayImage, P_class->boards.at(p),
                                 board_corners, board_ids, rejected, charucoCorners, charucoIds,
                                 P_class->detectorParams, cameraMatrix, distCoeffs);
 #else
                         cv::aruco::charucoLocal::interpolateCornersCharucoHomographyLocal(
-                                board_corners, board_ids, images.at(i),
+                                board_corners, board_ids, grayImage,
                                 P_class->boards.at(p), charucoCorners, charucoIds);
 #endif
 
