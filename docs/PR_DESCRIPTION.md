@@ -28,22 +28,28 @@ This pull request modernizes **CALICO** (Camera Calibration with Incremental Cer
 
 ## Visual Showcase: Rig Setup, Detection & Reconstruction
 
+Full gallery (AprilTag + ChArUco MuJoCo runs, detection overlays, recovered 3D networks):
+
+![PR verification gallery](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/pr_verification_gallery.png)
+
 ### 1. Multi-Camera Rig Setup in MuJoCo
-A 3-camera surround system (`cam0`, `cam1`, `cam2`) observing dual non-coplanar calibration targets:
+Three-camera surround views of dual non-coplanar targets:
 
-![Multi-Camera Rig Setup](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/rig_setup_charuco.png)
+| AprilTag grid | ChArUco |
+| :---: | :---: |
+| ![AprilTag rig](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/rig_setup_april.png) | ![ChArUco rig](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/rig_setup_charuco.png) |
 
-### 2. Pattern Definition, Detection & Reprojection
-Sub-pixel corner detection across ChArUco targets and reprojection verification:
-
-| Board Layout | Detection & Corner Fit | Reprojected Fit |
+### 2. Pattern Boards & Detection
+| Patterns | ChArUco multi-cam detection | AprilTag labeled boards |
 | :---: | :---: | :---: |
-| ![Board Layout](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/charuco_board_layout.png) | ![Detection](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/charuco_detection.png) | ![Reprojection](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/charuco_reprojection.png) |
+| ![Boards](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/pattern_boards_charuco_april.png) | ![Detection](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/charuco_detection_multicam.png) | ![April labels](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/april_boards_labeled.png) |
 
-### 3. Calibrated 3D Camera Network
-Reconstructed spatial relationship showing camera optical centers, viewing cones, and target positions:
+### 3. Recovered 3D Camera Networks
+Camera frustums, baselines (mm), and board poses from `calibration.json`:
 
-![Calibrated Camera Network](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/calibrated_camera_network_3d.png)
+| AprilTag MuJoCo | ChArUco MuJoCo |
+| :---: | :---: |
+| ![April network](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/calibrated_camera_network_3d.png) | ![ChArUco network](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/calibrated_camera_network_charuco_3d.png) |
 
 ---
 
@@ -59,6 +65,8 @@ Enforced by `sim/verify_mujoco_april.py` / `sim/verify_mujoco_charuco.py` (no `-
 | OpenCV reprojection RMS | $\le 1.5$ px |
 
 Pose checks assert the `inv(T)` convention (calibration.json `T_world_camera` is camera-from-world) and do not min() over both conventions.
+
+**Local checks for this update:** `python3 tools/test_tools.py` → **25/25 OK**. Showcase images regenerated from MuJoCo sim outputs + recovered `calibration.json` networks.
 
 ---
 
