@@ -198,6 +198,8 @@ def validate_dataset(dataset_dir: Path) -> Dict[str, Any]:
                 summary["pattern"]["dictionary"] = dict_name
                 summary["pattern"]["dict_capacity"] = capacity
 
+                # OpenCV CharucoBoard places markers on ~half the chessboard squares
+                # (matches CharucoIds().size() used in patterns.cpp).
                 markers_per_board = (sq_x * sq_y) // 2
                 total_needed = markers_per_board * num_boards
                 if total_needed > capacity:

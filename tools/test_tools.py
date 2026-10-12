@@ -78,6 +78,8 @@ class TestExportCalibration(unittest.TestCase):
             "cameras": [
                 {
                     "name": "cam0",
+                    "width": 960,
+                    "height": 720,
                     "fx": 800.0,
                     "fy": 800.0,
                     "cx": 480.0,
@@ -96,6 +98,8 @@ class TestExportCalibration(unittest.TestCase):
                 },
                 {
                     "name": "cam1",
+                    "width": 960,
+                    "height": 720,
                     "fx": 820.0,
                     "fy": 820.0,
                     "cx": 475.0,
@@ -454,6 +458,8 @@ class TestCalicoGUI(unittest.TestCase):
             "cameras": [
                 {
                     "name": "cam0",
+                    "width": 960,
+                    "height": 720,
                     "fx": 800.0,
                     "fy": 800.0,
                     "cx": 480.0,
@@ -462,6 +468,8 @@ class TestCalicoGUI(unittest.TestCase):
                 },
                 {
                     "name": "cam1",
+                    "width": 960,
+                    "height": 720,
                     "fx": 800.0,
                     "fy": 800.0,
                     "cx": 480.0,

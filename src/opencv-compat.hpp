@@ -14,8 +14,6 @@
 #include <opencv2/objdetect.hpp>
 #include <opencv2/objdetect/aruco_detector.hpp>
 #include <opencv2/objdetect/charuco_detector.hpp>
-#include <opencv2/aruco.hpp>
-#include <opencv2/aruco/charuco.hpp>
 #else
 #include <opencv2/aruco.hpp>
 #include <opencv2/aruco/charuco.hpp>
@@ -53,7 +51,9 @@ inline cv::Ptr<cv::aruco::CharucoBoard> CalicoCreateCharucoBoard(
                 cv::Size(squaresX, squaresY), squareLength, markerLength, *dictionary, ids);
     }
     // Printed CALICO boards (and OpenCV < 4.6) use the pre-4.6 even-row layout.
+#if CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 8)
     board->setLegacyPattern(true);
+#endif
     return board;
 #else
     cv::Ptr<cv::aruco::CharucoBoard> board = cv::aruco::CharucoBoard::create(

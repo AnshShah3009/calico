@@ -250,14 +250,18 @@ def parse_calibration_json(cali_dir: Path | str) -> Dict[str, Any]:
                     except (IndexError, ValueError):
                         pass
 
-    # Compute pairwise camera baselines
+    # Compute pairwise camera baselines from optical centers (T is world-to-camera).
     cameras = data.get("cameras", [])
     centers = []
     names = []
     for cam in cameras:
         T = cam.get("T_world_camera")
         if T and len(T) == 4 and len(T[0]) == 4:
-            centers.append([T[0][3], T[1][3], T[2][3]])
+            try:
+                from export_calibration import optical_center_mm
+                centers.append(optical_center_mm(T))
+            except Exception:
+                centers.append([T[0][3], T[1][3], T[2][3]])
             names.append(cam.get("name", "cam"))
 
     baselines = []
@@ -1492,6 +1496,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         const T = c.T_world_camera;
         if (T) {
           const frustum = createFrustum(c, color, idx);
+          // T is OpenCV world-to-camera; place frustum with camera-to-world.
           const mat = new THREE.Matrix4();
           mat.set(
             T[0][0], T[0][1], T[0][2], T[0][3],
@@ -1499,11 +1504,14 @@ STUDIO_HTML = """<!DOCTYPE html>
             T[2][0], T[2][1], T[2][2], T[2][3],
             T[3][0], T[3][1], T[3][2], T[3][3]
           );
+          mat.invert();
           frustum.applyMatrix4(mat);
           scene.add(frustum);
           frustumObjects.push(frustum);
 
-          positions.push(new THREE.Vector3(T[0][3], T[1][3], T[2][3]));
+          const center = new THREE.Vector3();
+          center.setFromMatrixPosition(mat);
+          positions.push(center);
         }
       });
 

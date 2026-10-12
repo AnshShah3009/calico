@@ -41,6 +41,10 @@ void PatternsCreated::ConstructAprilTagVersion(const string& read_dir, const str
     string spec_file_path = read_dir + "/network_specification_file.yaml";
     bool valid = readAprilTagSpecificationFile(spec_file_path, pp);
     pp.april_family = NormalizeAprilFamily(pp.april_family);
+    if (!ValidatePatternParams(pp, spec_file_path)) {
+        cout << "Pattern specification validation failed. Check errors above." << endl;
+        exit(1);
+    }
 
     string filename_write = write_dir + "network_specification_file.yaml";
 
@@ -265,6 +269,10 @@ void PatternsCreated::ConstructCharucoVersionNoRotate(const string& read_dir, co
         cout << "ReadCharucoSpecificationsFile did not work. " << spec_file_path << endl;
         exit(1);
     }
+    if (!ValidatePatternParams(pp, spec_file_path)) {
+        cout << "Pattern specification validation failed. Check errors above." << endl;
+        exit(1);
+    }
 
     // set everything up
     dictionary = CalicoGetDictionary(pp.arc_code);
@@ -407,9 +415,15 @@ void PatternsCreated::DetermineBoardsPresentFromMarkerList(const vector<int>& ma
     int board_index =0;
     int markers_per_board = NumberMarkersPerPattern();
 
+    const int nboards = static_cast<int>(boards_seen.size());
     for (int i = 0, in = markers.size(); i < in; i++){
+        if (markers_per_board <= 0) {
+            continue;
+        }
         board_index = markers[i]/markers_per_board;
-        boards_seen[board_index] = true;
+        if (board_index >= 0 && board_index < nboards) {
+            boards_seen[board_index] = true;
+        }
     }
 
 }
@@ -421,9 +435,15 @@ void PatternsCreated::DetermineBoardsPresentFromMarkerList(const vector<AprilTag
     int board_index =0;
     int markers_per_board = NumberMarkersPerPattern();
 
+    const int nboards = static_cast<int>(boards_seen.size());
     for (int i = 0, in = markers.size(); i < in; i++){
+        if (markers_per_board <= 0) {
+            continue;
+        }
         board_index = markers[i].id/markers_per_board;
-        boards_seen[board_index] = true;
+        if (board_index >= 0 && board_index < nboards) {
+            boards_seen[board_index] = true;
+        }
     }
 
 }

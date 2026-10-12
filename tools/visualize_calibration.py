@@ -55,8 +55,12 @@ def compute_camera_metrics(cameras: List[Dict[str, Any]]) -> Dict[str, Any]:
     for cam in cameras:
         T = cam.get("T_world_camera")
         if T and len(T) == 4 and len(T[0]) == 4:
-            # Translation vector (tx, ty, tz) in mm
-            centers.append([T[0][3], T[1][3], T[2][3]])
+            # Optical center from OpenCV world-to-camera: C = -R^T t (mm)
+            try:
+                from export_calibration import optical_center_mm
+                centers.append(optical_center_mm(T))
+            except Exception:
+                centers.append([T[0][3], T[1][3], T[2][3]])
             names.append(cam.get("name", "cam"))
 
     baselines = []
@@ -459,6 +463,7 @@ def generate_html(data: Dict[str, Any], title: str = "CALICO 3D Calibration Repo
 
       // 4x4 matrix decomposition
       // Note: Three.js matrix column-major vs row-major
+      // T is OpenCV world-to-camera; place frustum with camera-to-world.
       const mat = new THREE.Matrix4();
       mat.set(
         T[0][0], T[0][1], T[0][2], T[0][3],
@@ -466,12 +471,14 @@ def generate_html(data: Dict[str, Any], title: str = "CALICO 3D Calibration Repo
         T[2][0], T[2][1], T[2][2], T[2][3],
         T[3][0], T[3][1], T[3][2], T[3][3]
       );
+      mat.invert();
 
       frustum.applyMatrix4(mat);
       scene.add(frustum);
       frustumObjects.push(frustum);
 
-      const pos = new THREE.Vector3(T[0][3], T[1][3], T[2][3]);
+      const pos = new THREE.Vector3();
+      pos.setFromMatrixPosition(mat);
       camPositions.push(pos);
     }});
 

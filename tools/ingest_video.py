@@ -16,6 +16,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -152,7 +153,13 @@ def setup_calico_specifications(
     dest_spec = out_dir / "network_specification_file.yaml"
 
     if src_spec.is_file():
-        shutil.copy(src_spec, dest_spec)
+        text = src_spec.read_text(encoding="utf-8")
+        # Force numberBoards to match --boards so pattern_square_mm*.txt count agrees.
+        if re.search(r"(?m)^numberBoards\s*:", text):
+            text = re.sub(r"(?m)^numberBoards\s*:.*$", f"numberBoards: {number_boards}", text)
+        else:
+            text = text.rstrip() + f"\nnumberBoards: {number_boards}\n"
+        dest_spec.write_text(text, encoding="utf-8")
     else:
         # Fallback minimal template
         dest_spec.write_text(

@@ -506,10 +506,20 @@ int main(int argc, char **argv){
     if (cli_percentage_global_alg != 0.2) percentage_global_alg = cli_percentage_global_alg;
     if (cli_percentage_global_rp != 0.5) percentage_global_rp = cli_percentage_global_rp;
     if (cli_use_cuda) use_cuda = 1;
+    // CLI always wins when the user passed a non-empty --ingest-intrinsics.
     if (!cli_ingest_intrinsics_dir.empty()) ingest_intrinsics_dir = cli_ingest_intrinsics_dir;
     if (cli_loss_type != "trivial") loss_type = cli_loss_type;
     if (cli_loss_scale != 1.0f) loss_scale = cli_loss_scale;
+    // Explicit --num-pattern on CLI is saved before config; restore when it differs
+    // from the default that config may have overwritten.
+    // (cli_number_threads already restored above when it differs from omp max.)
     omp_set_num_threads(number_threads);
+
+    if (loss_type != "trivial" && loss_type != "huber" && loss_type != "cauchy") {
+        cerr << "Invalid --loss='" << loss_type
+             << "'. Expected trivial, huber, or cauchy." << endl;
+        exit(1);
+    }
 
     // Build CalicoOptions
     CalicoOptions opts;
@@ -1410,6 +1420,8 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
         for (int i = 0; i < number_cameras; i++) {
             json_out << "    {" << endl;
             json_out << "      \"name\": \"" << camera_directories[i] << "\"," << endl;
+            json_out << "      \"width\": " << CCV[i]->cols << "," << endl;
+            json_out << "      \"height\": " << CCV[i]->rows << "," << endl;
             json_out << "      \"fx\": " << CCV[i]->internal_parameters(0,0) << "," << endl;
             json_out << "      \"fy\": " << CCV[i]->internal_parameters(1,1) << "," << endl;
             json_out << "      \"cx\": " << CCV[i]->internal_parameters(0,2) << "," << endl;

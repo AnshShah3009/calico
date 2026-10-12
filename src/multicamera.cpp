@@ -11,6 +11,7 @@
 #include "camera-visualization.hpp"
 #include "helper.hpp"
 #include "solving-structure.hpp"
+#include <cstdio>
 #include <ios>
 //used
 single_relationship_container::single_relationship_container(int l){
@@ -2252,7 +2253,12 @@ double StdDeviation(vector<double>& v, double m)
 void MCcali::WriteCheckpoint(const string& write_dir, int stage, int variable_index) {
     string cp_file = write_dir + "checkpoint_stage" + ToString(stage) + ".txt";
     ofstream cp(cp_file.c_str());
-
+    if (!cp.good()) {
+        cout << "Warning: could not write checkpoint " << cp_file << endl;
+        return;
+    }
+    // Full double precision so resume matches a continuous solve.
+    cp << std::setprecision(17);
     cp << "stage " << stage << endl;
     cp << "variable_index " << variable_index << endl;
     cp << "num_vars " << vn << endl;
@@ -2272,11 +2278,27 @@ void MCcali::WriteCheckpoint(const string& write_dir, int stage, int variable_in
     }
 
     cp.close();
+    if (!cp) {
+        cout << "Warning: checkpoint write failed for " << cp_file << endl;
+        return;
+    }
 
+    // Atomic replace of checkpoint.txt via temp + rename.
     string latest = write_dir + "checkpoint.txt";
-    ifstream src(cp_file.c_str(), std::ios::binary);
-    ofstream dst(latest.c_str(), std::ios::binary);
-    dst << src.rdbuf();
+    string latest_tmp = write_dir + "checkpoint.txt.tmp";
+    {
+        ifstream src(cp_file.c_str(), std::ios::binary);
+        ofstream dst(latest_tmp.c_str(), std::ios::binary);
+        if (src.good() && dst.good()) {
+            dst << src.rdbuf();
+            dst.close();
+            if (dst && std::rename(latest_tmp.c_str(), latest.c_str()) != 0) {
+                cout << "Warning: could not atomically update " << latest << endl;
+            }
+        } else {
+            cout << "Warning: could not copy checkpoint to " << latest << endl;
+        }
+    }
 
     cout << "Checkpoint saved: " << cp_file << " (var " << variable_index << ")" << endl;
 }
