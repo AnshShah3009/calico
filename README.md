@@ -1,12 +1,12 @@
 # calico
 
 > [!NOTE]
-> **Updated by Ansh Shah**: Modernized for OpenCV 5.0, CUDA-accelerated target detection, Ceres robust loss functions (Huber, Cauchy), Stage 5 checkpointing and equation-level resume, MuJoCo ground-truth multi-camera verification suite, production exporters (ROS/ROS2 CameraInfo, Nerfstudio transforms.json, COLMAP), interactive 3D WebGL visualizer, and dual CPU/CUDA automated Docker CI/CD.
+> **Updated by Ansh Shah**: Modernized for OpenCV 5.0, CUDA-accelerated target detection, Ceres robust loss functions (Huber, Cauchy), Stage 5 checkpointing and equation-level resume, CALICO Studio zero-dependency Web GUI, dataset pre-flight validator, production exporters (OpenCV FileStorage, ROS/ROS2 CameraInfo, Nerfstudio transforms.json, COLMAP), MuJoCo ground-truth multi-camera verification suite, and automated dual CPU/CUDA Docker CI/CD.
 
 CALICO: a method for calibrating asynchronous camera networks and/or multicamera systems, version **. December 2023 (Original release November 2019).
 
 Changelog: 
-- **Updated by Ansh Shah (2024-2026)**: Added OpenCV 5.0 compatibility shim, CUDA GPU acceleration, Ceres robust losses, Stage 5 checkpoint/resume, MuJoCo simulation benchmark, export tools (ROS, NeRF, COLMAP), and Docker Hub CI/CD.
+- **Updated by Ansh Shah (2024-2026)**: Added OpenCV 5.0 compatibility shim, CUDA GPU acceleration, Ceres robust losses (Huber, Cauchy), Stage 5 checkpoint/resume, 21 Quality-of-Life (QoL) CLI flags, structured JSON output (`calibration.json`), CALICO Studio Web GUI, dataset validator, production exporters (OpenCV FileStorage, ROS, NeRF, COLMAP), MuJoCo simulation benchmarks, and Docker Hub CI/CD.
 - code factoring and reorganization; added April Tags support. January 2024.
 - Docker image added March 2020.
 - Added incremental method as default, and another overhaul, April 2020.
@@ -243,7 +243,7 @@ where `/usr/local/opencv41/lib/cmake/opencv4/` is the directory containing `Open
 
 ## Running
 
-### Quality-of-Life & Extended CLI Flags
+### Quality-of-Life & Modernized CLI Flags
 
 | Flag | Argument | Description |
 | :--- | :--- | :--- |
@@ -256,6 +256,8 @@ where `/usr/local/opencv41/lib/cmake/opencv4/` is the directory containing `Open
 | `--no-progress` | — | Disable progress display |
 | `--timestamp` | — | Automatically append execution timestamp to the output directory |
 | `--no-overwrite` | — | Abort safely if the target output directory already contains results |
+| `--force` | — | Force overwrite existing output directory |
+| `--auto-rename` | — | Append input dataset basename to output directory name |
 | `--json` | — | Export structured `calibration.json` with intrinsics, extrinsics, and poses |
 | `--checkpoint` | — | Periodically write optimization checkpoint files to disk |
 | `--resume=<dir>` | Path | Resume calibration from saved checkpoint directory |
@@ -266,12 +268,23 @@ where `/usr/local/opencv41/lib/cmake/opencv4/` is the directory containing `Open
 | `--ingest-intrinsics=<dir>` | Path | Ingest pre-calibrated intrinsic parameters and fix them during optimization |
 | `--config=<path>` | Path | Load arguments and options from a `.cfg` / `.yaml` file |
 | `--threads=<N>` | Int | Number of OpenMP worker threads |
-| `--filter-camera=<cam>`| String | Process only the specified camera stream |
+| `--camera-names=<list>` | String | Comma-separated camera name overrides |
+| `--exclude-camera=<cam>`| String | Comma-separated cameras to exclude |
+| `--focus-camera=<cam>` | String | Process only specified cameras (inverse of exclude) |
+| `--filter-camera=<cam>`| String | Alias for camera filtering |
 | `--max-frames=<N>` | Int | Limit maximum number of frames ingested per camera |
+| `--max-images=<N>` | Int | Unified image cap across cameras |
+| `--min-boards=<N>` | Int | Auto-exclude cameras detecting fewer than N boards |
 | `--stride=<N>` | Int | Frame sampling stride (e.g. process every N-th frame) |
-| `--min-corners=<N>` | Int | Minimum number of detected corners required to consider a pattern detection |
+| `--min-corners=<N>` | Int | Minimum detected corners required for a valid pattern observation |
 | `--scale=<factor>` | Float | Downsample input image frames by factor for faster processing |
+| `--camera-color=<RGB>` | String | Per-camera PLY visualization colors (`R,G,B\|R,G,B\|...`) |
+| `--pattern-color=<RGB>`| String | Per-pattern PLY visualization colors |
 | `--save-detections` | — | Write annotated detection visualization images to the output directory |
+| `--no-visualization` | — | Skip PLY meshes and equation PNG generation |
+| `--no-debug-images` | — | Skip per-image detection PNG writing |
+| `--detection-summary` | — | Print board visibility table per camera |
+| `--per-camera-mse` | — | Compute and report per-camera reprojection MSE in output |
 
 To see the available options, run `./calico-dec2023` with no arguments or `--help`.:
 

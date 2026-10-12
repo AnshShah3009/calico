@@ -1,5 +1,10 @@
 # AGENTS.md — calico (Ansh QoL + OpenCV 5 / CUDA)
 
+> [!TIP]
+> **OpenCV 5.0, CUDA Acceleration & CI/CD**:
+> The `main` branch provides Ansh Shah's 21 Quality-of-Life (QoL) flags, structured JSON export, and checkpointing for OpenCV <= 4.3.
+> For the modernized suite with OpenCV 5.0 compatibility, CUDA GPU-accelerated detection, Ceres robust loss functions, CTest unit testing, and Docker Hub CI/CD, see branch [`feat/setup-opencv5-cuda`](https://github.com/AnshShah3009/calico/tree/feat/setup-opencv5-cuda) or [PR #1](https://github.com/AnshShah3009/calico/pull/1).
+
 Multi-camera calibration (C++17, CMake). Paper: https://arxiv.org/abs/1903.06811
 
 This tree is **AnshShah3009/calico** (Amy Tabb’s CALICO plus QoL flags), extended with OpenCV 5-compatible ArUco, CUDA-assisted detection, working `--resume`, richer `--json`, and ingestable intrinsics.
