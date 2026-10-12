@@ -53,7 +53,7 @@ FROM ubuntu:22.04 AS runtime
 RUN apt-get update && apt-get install -y \
     libgtk2.0-0 libtbb2 libgoogle-glog0v5 libsuitesparseconfig5 \
     libcholmod3 liblapack3 libblas3 libatlas3-base libgomp1 \
-    libpng16-16 libjpeg-turbo8 libtiff5 libwebp6 libopenjp2-7 \
+    libpng16-16 libjpeg-turbo8 libtiff5 libwebp7 libopenjp2-7 \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /usr/local /usr/local
 COPY --from=builder /calico/build/calico-dec2023 /usr/local/bin/calico-dec2023
