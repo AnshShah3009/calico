@@ -97,26 +97,28 @@ def generate_html(data: Dict[str, Any], title: str = "CALICO 3D Calibration Repo
 <title>{title}</title>
 <style>
   :root {{
-    --bg-primary: #0f1117;
-    --bg-secondary: #1a1d27;
-    --bg-card: #222634;
-    --text-primary: #f1f5f9;
+    --bg-primary: #090c13;
+    --bg-secondary: #0f1422;
+    --bg-card: #151c2e;
+    --bg-card-hover: #1b233a;
+    --text-primary: #f8fafc;
     --text-secondary: #94a3b8;
-    --border-color: #333849;
+    --border-color: #202b42;
     --accent: #38bdf8;
-    --accent-hover: #0284c7;
-    --success: #34d399;
-    --warning: #fbbf24;
-    --cam0: #f43f5e;
-    --cam1: #3b82f6;
-    --cam2: #10b981;
-    --cam3: #f59e0b;
+    --accent-hover: #0ea5e9;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --radius: 8px;
   }}
   * {{
     box-sizing: border-box;
     margin: 0;
     padding: 0;
   }}
+  ::-webkit-scrollbar {{ width: 6px; height: 6px; }}
+  ::-webkit-scrollbar-track {{ background: transparent; }}
+  ::-webkit-scrollbar-thumb {{ background: var(--border-color); border-radius: 999px; }}
+  ::-webkit-scrollbar-thumb:hover {{ background: #2e3c5c; }}
   body {{
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background-color: var(--bg-primary);
@@ -221,28 +223,34 @@ def generate_html(data: Dict[str, Any], title: str = "CALICO 3D Calibration Repo
     position: absolute;
     bottom: 20px;
     left: 20px;
-    background: rgba(26, 29, 39, 0.85);
-    backdrop-filter: blur(8px);
+    background: rgba(15, 20, 32, 0.85);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 8px;
+    border-radius: var(--radius);
+    padding: 6px 8px;
     display: flex;
     gap: 6px;
     z-index: 20;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
   }}
   .btn {{
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     color: var(--text-primary);
     padding: 6px 12px;
-    border-radius: 4px;
+    border-radius: 6px;
     font-size: 0.78rem;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all 0.15s ease;
   }}
   .btn:hover {{
-    background: var(--accent);
-    color: #000;
+    background: var(--bg-card-hover);
+    border-color: var(--accent);
+  }}
+  .btn:active {{
+    transform: translateY(1px);
   }}
   .tooltip-help {{
     position: absolute;
@@ -281,6 +289,7 @@ def generate_html(data: Dict[str, Any], title: str = "CALICO 3D Calibration Repo
         <button class="btn" onclick="resetView('top')">Top View</button>
         <button class="btn" onclick="resetView('front')">Front View</button>
         <button class="btn" onclick="resetView('side')">Side View</button>
+        <button class="btn" onclick="fitAll()">Fit All</button>
         <button class="btn" onclick="toggleFrustums()">Toggle Frustums</button>
         <button class="btn" onclick="toggleBaselines()">Toggle Baselines</button>
       </div>
@@ -580,6 +589,17 @@ def generate_html(data: Dict[str, Any], title: str = "CALICO 3D Calibration Repo
       }}
       camera.lookAt(target);
       controls.update();
+    }}
+
+    function fitAll() {{
+      if (camPositions.length > 0) {{
+        const box = new THREE.Box3();
+        camPositions.forEach(p => box.expandByPoint(p));
+        const center = box.getCenter(new THREE.Vector3());
+        controls.target.copy(center);
+        camera.position.set(center.x, center.y + 1100, center.z + 1500);
+        camera.lookAt(center);
+      }}
     }}
 
     let showFrustums = true;

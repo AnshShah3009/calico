@@ -281,11 +281,12 @@ STUDIO_HTML = """<!DOCTYPE html>
 <title>CALICO Studio | Multi-Camera Calibration</title>
 <style>
   :root {
-    --bg-base: #0b0d13;
-    --bg-surface: #131722;
-    --bg-card: #1c2233;
-    --bg-card-hover: #242c42;
-    --border: #2a344d;
+    --bg-base: #090c13;
+    --bg-surface: #0f1422;
+    --bg-card: #151c2e;
+    --bg-card-hover: #1b233a;
+    --border: #202b42;
+    --border-hover: #2e3c5c;
     --text-main: #f8fafc;
     --text-muted: #94a3b8;
     --text-dim: #64748b;
@@ -295,48 +296,93 @@ STUDIO_HTML = """<!DOCTYPE html>
     --success: #10b981;
     --warning: #f59e0b;
     --danger: #ef4444;
-    --accent: #8b5cf6;
-    --radius: 8px;
+    --accent: #a855f7;
+    --radius-sm: 6px;
+    --radius: 10px;
+    --radius-lg: 14px;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     background-color: var(--bg-base);
     color: var(--text-main);
     display: flex;
     flex-direction: column;
     height: 100vh;
     overflow: hidden;
+    -webkit-font-smoothing: antialiased;
   }
+
   header {
     background: var(--bg-surface);
     border-bottom: 1px solid var(--border);
-    padding: 12px 24px;
+    padding: 10px 24px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     z-index: 30;
+    box-shadow: var(--shadow-sm);
   }
-  .logo {
+  .logo-group {
     display: flex;
     align-items: center;
     gap: 12px;
+  }
+  .logo-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     font-size: 1.15rem;
     font-weight: 700;
+    color: var(--text-main);
+    letter-spacing: -0.4px;
+  }
+  .logo-title span {
     color: var(--primary);
-    letter-spacing: -0.5px;
+  }
+  .header-badges {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
   .badge {
     font-size: 0.72rem;
     font-weight: 600;
-    padding: 3px 8px;
+    padding: 3px 10px;
     border-radius: 999px;
     background: var(--bg-card);
     border: 1px solid var(--border);
     color: var(--text-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
-  .badge-cuda { background: rgba(16, 185, 129, 0.1); border-color: var(--success); color: var(--success); }
-  .badge-primary { background: var(--primary-glow); border-color: var(--primary); color: var(--primary); }
+  .badge-cuda {
+    background: rgba(16, 185, 129, 0.12);
+    border-color: rgba(16, 185, 129, 0.3);
+    color: var(--success);
+  }
+  .badge-primary {
+    background: var(--primary-glow);
+    border-color: rgba(56, 189, 248, 0.3);
+    color: var(--primary);
+  }
+  .dot-pulse {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    display: inline-block;
+  }
 
   nav {
     display: flex;
@@ -350,20 +396,25 @@ STUDIO_HTML = """<!DOCTYPE html>
     background: transparent;
     border: none;
     color: var(--text-muted);
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     font-weight: 600;
     padding: 6px 14px;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
-  .nav-btn.active, .nav-btn:hover {
+  .nav-btn:hover {
     color: var(--text-main);
-    background: var(--bg-card);
+    background: rgba(255, 255, 255, 0.04);
   }
   .nav-btn.active {
     color: var(--primary);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    background: var(--bg-card);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border);
   }
 
   main {
@@ -381,24 +432,55 @@ STUDIO_HTML = """<!DOCTYPE html>
     display: flex;
   }
 
-  /* Wizard Styles */
+  #toast-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 1000;
+    pointer-events: none;
+  }
+  .toast {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 16px;
+    font-size: 0.82rem;
+    color: var(--text-main);
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    pointer-events: auto;
+    animation: toast-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: opacity 0.2s;
+  }
+  .toast-success { border-color: rgba(16, 185, 129, 0.5); }
+  .toast-info { border-color: rgba(56, 189, 248, 0.5); }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
   .wizard-layout {
     display: grid;
-    grid-template-columns: 480px 1fr;
+    grid-template-columns: 460px 1fr;
     width: 100%;
     height: 100%;
   }
   .config-panel {
     background: var(--bg-surface);
     border-right: 1px solid var(--border);
-    padding: 24px;
+    padding: 20px 24px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 18px;
   }
   .console-panel {
-    background: #090a0f;
+    background: #080a0f;
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -407,25 +489,30 @@ STUDIO_HTML = """<!DOCTYPE html>
   .console-header {
     background: var(--bg-surface);
     border-bottom: 1px solid var(--border);
-    padding: 12px 20px;
+    padding: 10px 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+  }
+  .console-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
   #terminal {
     flex: 1;
     padding: 16px 20px;
     font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     color: #cbd5e1;
     overflow-y: auto;
     white-space: pre-wrap;
-    line-height: 1.5;
+    line-height: 1.55;
+    background: #07090e;
   }
 
-  /* Form Elements */
   .section-title {
-    font-size: 0.88rem;
+    font-size: 0.82rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -439,10 +526,10 @@ STUDIO_HTML = """<!DOCTYPE html>
     display: flex;
     flex-direction: column;
     gap: 6px;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
   }
   .form-group label {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     font-weight: 600;
     color: var(--text-muted);
   }
@@ -456,26 +543,28 @@ STUDIO_HTML = """<!DOCTYPE html>
     border: 1px solid var(--border);
     color: var(--text-main);
     padding: 8px 12px;
-    border-radius: var(--radius);
-    font-size: 0.85rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.83rem;
     outline: none;
-    transition: border-color 0.15s ease;
+    transition: all 0.15s ease;
   }
   input:focus, select:focus {
     border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
   }
   .checkbox-group {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     color: var(--text-main);
     cursor: pointer;
+    user-select: none;
   }
   .checkbox-group input {
     cursor: pointer;
-    width: 16px;
-    height: 16px;
+    width: 15px;
+    height: 15px;
     accent-color: var(--primary);
   }
 
@@ -483,32 +572,78 @@ STUDIO_HTML = """<!DOCTYPE html>
     background: var(--bg-card);
     border: 1px solid var(--border);
     color: var(--text-main);
-    padding: 9px 16px;
-    border-radius: var(--radius);
-    font-size: 0.85rem;
+    padding: 8px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 0.82rem;
     font-weight: 600;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 6px;
     transition: all 0.15s ease;
   }
-  .btn:hover { background: var(--bg-card-hover); }
+  .btn:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-hover);
+  }
+  .btn:active {
+    transform: translateY(1px);
+  }
+  .btn-sm {
+    padding: 4px 10px;
+    font-size: 0.75rem;
+  }
   .btn-primary {
     background: var(--primary);
     border-color: var(--primary);
-    color: #000;
+    color: #040914;
+    font-weight: 700;
   }
-  .btn-primary:hover { background: var(--primary-hover); }
+  .btn-primary:hover {
+    background: var(--primary-hover);
+    border-color: var(--primary-hover);
+  }
   .btn-danger {
-    background: rgba(239, 68, 68, 0.15);
-    border-color: var(--danger);
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.4);
     color: var(--danger);
   }
-  .btn-danger:hover { background: var(--danger); color: #fff; }
+  .btn-danger:hover {
+    background: var(--danger);
+    color: #fff;
+  }
 
-  /* 3D Visualizer Layout */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    box-shadow: var(--shadow-sm);
+  }
+  .card h3 {
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: var(--primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .prop-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.8rem;
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  }
+  .prop-row:last-child { border-bottom: none; }
+  .prop-label { color: var(--text-muted); }
+  .prop-val { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
+
   .visualizer-layout {
     display: grid;
     grid-template-columns: 1fr 380px;
@@ -519,56 +654,32 @@ STUDIO_HTML = """<!DOCTYPE html>
     position: relative;
     width: 100%;
     height: 100%;
-    background: radial-gradient(circle at center, #181d2a 0%, #080a0f 100%);
+    background: radial-gradient(circle at center, #141926 0%, #07090e 100%);
   }
   .vis-sidebar {
     background: var(--bg-surface);
     border-left: 1px solid var(--border);
-    padding: 20px;
+    padding: 18px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 14px;
   }
-  .card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 14px;
-  }
-  .card h3 {
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: var(--primary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 10px;
-    display: flex;
-    justify-content: space-between;
-  }
-  .prop-row {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.82rem;
-    padding: 4px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
-  }
-  .prop-row:last-child { border-bottom: none; }
-  .prop-label { color: var(--text-muted); }
-  .prop-val { font-family: monospace; font-weight: 600; }
   .cam-card {
     border-left: 4px solid var(--primary);
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     cursor: pointer;
-    transition: transform 0.15s, border-color 0.15s;
+    transition: all 0.15s ease;
   }
   .cam-card:hover {
     transform: translateX(2px);
     background: var(--bg-card-hover);
+    border-color: var(--border-hover);
   }
   .cam-card.selected {
     border-left-width: 6px;
-    box-shadow: 0 0 12px var(--primary-glow);
+    box-shadow: 0 0 16px var(--primary-glow);
+    background: var(--bg-card-hover);
   }
 
   .viewport-overlay {
@@ -576,32 +687,35 @@ STUDIO_HTML = """<!DOCTYPE html>
     bottom: 20px;
     left: 20px;
     display: flex;
-    gap: 8px;
+    gap: 6px;
     z-index: 10;
-    background: rgba(19, 23, 34, 0.85);
-    backdrop-filter: blur(10px);
+    background: rgba(15, 20, 32, 0.85);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
     border: 1px solid var(--border);
-    padding: 8px;
+    padding: 6px 8px;
     border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
   }
   .viewport-tooltip {
     position: absolute;
     top: 20px;
     left: 20px;
-    background: rgba(19, 23, 34, 0.8);
-    backdrop-filter: blur(6px);
+    background: rgba(15, 20, 32, 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     border: 1px solid var(--border);
     padding: 6px 12px;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     font-size: 0.75rem;
     color: var(--text-muted);
     pointer-events: none;
+    box-shadow: var(--shadow-sm);
   }
 
-  /* Progress Bar */
   .progress-wrap {
     height: 6px;
-    background: var(--bg-card);
+    background: rgba(255, 255, 255, 0.06);
     border-radius: 999px;
     overflow: hidden;
     margin: 8px 0;
@@ -617,21 +731,41 @@ STUDIO_HTML = """<!DOCTYPE html>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
+  <div id="toast-container"></div>
+
   <header>
-    <div class="logo">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-        <circle cx="12" cy="13" r="4"/>
-      </svg>
-      CALICO Studio
-      <span class="badge badge-primary">v5.0-Modern</span>
-      <span id="cuda-badge" class="badge">Checking Hardware...</span>
+    <div class="logo-group">
+      <div class="logo-title">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+          <circle cx="12" cy="13" r="4"/>
+        </svg>
+        CALICO <span>Studio</span>
+      </div>
+      <div class="header-badges">
+        <span class="badge badge-primary">v5.0-Modern</span>
+        <span id="cuda-badge" class="badge">
+          <span class="dot-pulse"></span> Checking Hardware...
+        </span>
+      </div>
     </div>
     <nav>
-      <button class="nav-btn active" onclick="switchTab('wizard')">⚡ Calibration Wizard</button>
-      <button class="nav-btn" onclick="switchTab('validate')">🔍 Pre-Flight Check</button>
-      <button class="nav-btn" onclick="switchTab('visualizer')">🌐 3D Visualizer & Inspector</button>
-      <button class="nav-btn" onclick="switchTab('export')">📦 Export Hub</button>
+      <button class="nav-btn active" onclick="switchTab('wizard')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        Calibration Wizard
+      </button>
+      <button class="nav-btn" onclick="switchTab('validate')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Pre-Flight Check
+      </button>
+      <button class="nav-btn" onclick="switchTab('visualizer')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        3D Visualizer & Inspector
+      </button>
+      <button class="nav-btn" onclick="switchTab('export')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        Export Hub
+      </button>
     </nav>
   </header>
 
@@ -641,9 +775,15 @@ STUDIO_HTML = """<!DOCTYPE html>
       <div class="wizard-layout">
         <div class="config-panel">
           <div>
-            <div class="form-group" style="margin-bottom:14px; background:rgba(56,189,248,0.06); padding:10px; border-radius:6px; border:1px solid var(--border);">
-              <label style="color:var(--primary); font-weight:700;">⚡ Configuration Preset</label>
-              <select id="config-preset" onchange="applyPreset()" style="margin-top:4px;">
+            <div style="background:rgba(56,189,248,0.06); padding:12px; border-radius:var(--radius); border:1px solid var(--border); margin-bottom:16px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                <label style="color:var(--primary); font-weight:700; font-size:0.8rem; display:flex; align-items:center; gap:6px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                  Configuration Preset
+                </label>
+                <span style="font-size:0.7rem; color:var(--text-muted);">Quick-apply profile</span>
+              </div>
+              <select id="config-preset" onchange="applyPreset()" style="width:100%;">
                 <option value="custom">Custom Configuration</option>
                 <option value="charuco_std">ChArUco Standard (7x9, 45mm, Huber, 8 threads)</option>
                 <option value="april_cuda">AprilTag Grid (tag36h11, 80mm, CUDA GPU)</option>
@@ -655,8 +795,11 @@ STUDIO_HTML = """<!DOCTYPE html>
             <div class="section-title">1. Dataset & Pattern</div>
             <div class="form-group">
               <div style="display:flex; justify-content:space-between; align-items:center;">
-                <label>Select Dataset / Results</label>
-                <button class="btn" style="padding:2px 8px; font-size:0.72rem; color:var(--primary);" onclick="runPreflightCheck()">🔍 Pre-Flight Check</button>
+                <label>Workspace Dataset</label>
+                <button class="btn btn-sm" style="color:var(--primary);" onclick="runPreflightCheck()">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  Pre-Flight Check
+                </button>
               </div>
               <select id="dataset-select" onchange="onDatasetChange()" style="margin-top:4px;">
                 <option value="">-- Choose Workspace Dataset --</option>
@@ -671,7 +814,7 @@ STUDIO_HTML = """<!DOCTYPE html>
                 </select>
               </div>
               <div class="form-group">
-                <label>Pattern Family</label>
+                <label>Tag / Marker Family</label>
                 <select id="tag-family">
                   <option value="tag36h11">tag36h11 (Standard)</option>
                   <option value="tag25h9">tag25h9</option>
@@ -731,11 +874,11 @@ STUDIO_HTML = """<!DOCTYPE html>
             </div>
           </div>
 
-          <div>
+          <div style="margin-top:auto; padding-top:12px;">
             <div class="section-title">3. Actions</div>
             <div style="display:flex; gap:10px;">
               <button class="btn btn-primary" style="flex:1;" onclick="startCalibration()">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                 Run Calibration
               </button>
               <button class="btn btn-danger" onclick="cancelCalibration()">Stop</button>
@@ -745,11 +888,15 @@ STUDIO_HTML = """<!DOCTYPE html>
 
         <div class="console-panel">
           <div class="console-header">
-            <div>
+            <div style="display:flex; align-items:center; gap:8px;">
               <span id="job-status-badge" class="badge">Idle</span>
-              <span id="stage-badge" style="font-size:0.8rem; margin-left:8px; color:var(--text-muted);">Ready to calibrate</span>
+              <span id="stage-badge" style="font-size:0.78rem; color:var(--text-muted);">Ready to calibrate</span>
             </div>
-            <div style="font-size:0.8rem; color:var(--text-dim);" id="time-elapsed">Elapsed: 0.0s</div>
+            <div class="console-actions">
+              <span style="font-size:0.78rem; color:var(--text-dim); margin-right:8px;" id="time-elapsed">Elapsed: 0.0s</span>
+              <button class="btn btn-sm" onclick="copyTerminalLogs()">📋 Copy Logs</button>
+              <button class="btn btn-sm" onclick="clearTerminal()">🗑️ Clear</button>
+            </div>
           </div>
           <div style="padding: 0 20px;">
             <div class="progress-wrap"><div id="progress-bar" class="progress-fill"></div></div>
@@ -759,36 +906,42 @@ STUDIO_HTML = """<!DOCTYPE html>
       </div>
     </div>
 
-        <!-- TAB: PRE-FLIGHT VALIDATION -->
+    <!-- TAB 2: PRE-FLIGHT VALIDATION -->
     <div id="tab-validate" class="tab-pane">
-      <div style="padding: 24px; max-width: 960px; margin: 0 auto; overflow-y:auto; width:100%;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <div style="padding: 28px; max-width: 980px; margin: 0 auto; overflow-y:auto; width:100%;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
           <div>
-            <h2 style="font-size:1.3rem; color:var(--primary); margin-bottom:4px;">Pre-Flight Dataset Validation</h2>
-            <p style="color:var(--text-muted); font-size:0.85rem;">Analyze frame synchronicity, resolutions, pattern geometry, and dictionary limits before running CALICO.</p>
+            <h2 style="font-size:1.25rem; color:var(--primary); margin-bottom:4px; font-weight:700;">Pre-Flight Dataset Validation</h2>
+            <p style="color:var(--text-muted); font-size:0.83rem;">Analyze frame synchronicity, image dimensions, markerLength constraints, and dictionary limits before running CALICO.</p>
           </div>
-          <button class="btn btn-primary" onclick="runPreflightCheck()">Run Check Now</button>
+          <div style="display:flex; gap:10px;">
+            <button class="btn btn-primary" onclick="runPreflightCheck()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              Run Check Now
+            </button>
+          </div>
         </div>
         <div id="validation-report-card">
-          <div class="card" style="text-align:center; padding:32px; color:var(--text-muted);">
-            Select a dataset in the Calibration Wizard and click "Run Check Now" to analyze the dataset.
+          <div class="card" style="text-align:center; padding:36px; color:var(--text-muted);">
+            Select a dataset in the Calibration Wizard and click "Run Check Now" to inspect files.
           </div>
         </div>
       </div>
     </div>
 
-    <!-- TAB 2: 3D VISUALIZER & INSPECTOR -->
+    <!-- TAB 3: 3D VISUALIZER & INSPECTOR -->
     <div id="tab-visualizer" class="tab-pane">
       <div class="visualizer-layout">
         <div id="viewport">
-          <div class="viewport-tooltip">Left Click: Orbit &bull; Right Click: Pan &bull; Scroll: Zoom &bull; Click Camera to Inspect</div>
+          <div class="viewport-tooltip">Left Click: Orbit &bull; Right Click: Pan &bull; Scroll: Zoom &bull; Click Camera Frustum to Inspect</div>
           <div class="viewport-overlay">
-            <button class="btn" onclick="reset3DView('perspective')">Perspective</button>
-            <button class="btn" onclick="reset3DView('top')">Top</button>
-            <button class="btn" onclick="reset3DView('front')">Front</button>
-            <button class="btn" onclick="reset3DView('side')">Side</button>
-            <button class="btn" onclick="toggleFrustums()">Frustums</button>
-            <button class="btn" onclick="toggleBaselines()">Baselines</button>
+            <button class="btn btn-sm" onclick="reset3DView('perspective')">Perspective</button>
+            <button class="btn btn-sm" onclick="reset3DView('top')">Top</button>
+            <button class="btn btn-sm" onclick="reset3DView('front')">Front</button>
+            <button class="btn btn-sm" onclick="reset3DView('side')">Side</button>
+            <button class="btn btn-sm" onclick="fitAllCameras()">Fit All</button>
+            <button class="btn btn-sm" onclick="toggleFrustums()">Frustums</button>
+            <button class="btn btn-sm" onclick="toggleBaselines()">Baselines</button>
           </div>
         </div>
         <div class="vis-sidebar">
@@ -805,45 +958,73 @@ STUDIO_HTML = """<!DOCTYPE html>
           </div>
 
           <div class="card" style="flex:1;">
-            <h3>Camera Intrinsic & Extrinsic Parameters</h3>
+            <h3>Camera Parameters</h3>
             <div id="vis-cameras-list"></div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- TAB 3: EXPORT HUB -->
+    <!-- TAB 4: EXPORT HUB -->
     <div id="tab-export" class="tab-pane">
-      <div style="padding: 32px; max-width: 900px; margin: 0 auto; overflow-y:auto; width:100%;">
-        <h2 style="font-size:1.3rem; margin-bottom:8px; color:var(--primary);">Export Multi-Camera Calibration</h2>
-        <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:24px;">Export calibrated intrinsics, distortion matrices, and camera-to-world poses into standard robotics and vision formats.</p>
+      <div style="padding: 32px; max-width: 960px; margin: 0 auto; overflow-y:auto; width:100%;">
+        <div style="margin-bottom:24px;">
+          <h2 style="font-size:1.3rem; margin-bottom:6px; color:var(--primary); font-weight:700;">Export Multi-Camera Calibration</h2>
+          <p style="color:var(--text-muted); font-size:0.85rem;">Generate standardized matrices and pose parameters for vision and robotics stacks.</p>
+        </div>
 
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
-          <div class="card">
-            <h3>OpenCV cv::FileStorage</h3>
-            <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:14px;">Standard cv::FileStorage YAML format with camera_matrix, distortion_coefficients, and extrinsics for C++ & Python.</p>
+          <div class="card" style="display:flex; flex-direction:column;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+              <h3 style="margin:0;">OpenCV cv::FileStorage</h3>
+              <span class="badge badge-primary">C++ / Python</span>
+            </div>
+            <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:16px; flex:1;">
+              Standard %YAML:1.0 format with camera_matrix (3x3), distortion_coefficients (5x1), and world-camera extrinsics (4x4).
+            </p>
             <button class="btn btn-primary" style="width:100%;" onclick="runExport('opencv')">Export OpenCV YAML</button>
           </div>
-          <div class="card">
-            <h3>ROS / ROS2</h3>
-            <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:14px;">CameraInfo YAML files for each camera with K, D, R, P matrices.</p>
+
+          <div class="card" style="display:flex; flex-direction:column;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+              <h3 style="margin:0;">ROS / ROS2</h3>
+              <span class="badge" style="color:var(--success);">Robotics</span>
+            </div>
+            <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:16px; flex:1;">
+              CameraInfo YAML files for each camera with K, D, R, P matrices ready for image_proc and ros2 image pipelines.
+            </p>
             <button class="btn btn-primary" style="width:100%;" onclick="runExport('ros')">Export ROS YAML</button>
           </div>
-          <div class="card">
-            <h3>Nerfstudio</h3>
-            <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:14px;">transforms.json format for NeRF, 3D Gaussian Splatting, and instant-ngp.</p>
+
+          <div class="card" style="display:flex; flex-direction:column;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+              <h3 style="margin:0;">Nerfstudio</h3>
+              <span class="badge" style="color:var(--accent);">NeRF / 3DGS</span>
+            </div>
+            <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:16px; flex:1;">
+              transforms.json specification for Neural Radiance Fields, 3D Gaussian Splatting, and instant-ngp training pipelines.
+            </p>
             <button class="btn btn-primary" style="width:100%;" onclick="runExport('nerfstudio')">Export transforms.json</button>
           </div>
-          <div class="card">
-            <h3>COLMAP</h3>
-            <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:14px;">cameras.txt, images.txt for structure-from-motion pipelines.</p>
+
+          <div class="card" style="display:flex; flex-direction:column;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+              <h3 style="margin:0;">COLMAP</h3>
+              <span class="badge" style="color:var(--warning);">Photogrammetry</span>
+            </div>
+            <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:16px; flex:1;">
+              Structure-from-Motion cameras.txt and images.txt representation with quaternion orientations and pinhole models.
+            </p>
             <button class="btn btn-primary" style="width:100%;" onclick="runExport('colmap')">Export COLMAP</button>
           </div>
         </div>
 
         <div id="export-result-card" class="card" style="margin-top:24px; display:none;">
-          <h3 style="color:var(--success);">Export Generated</h3>
-          <pre id="export-output" style="font-family:monospace; font-size:0.82rem; margin-top:10px; color:#cbd5e1; white-space:pre-wrap;"></pre>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h3 style="color:var(--success); margin:0;">Export Successfully Generated</h3>
+            <button class="btn btn-sm" onclick="copyExportOutput()">📋 Copy Output JSON</button>
+          </div>
+          <pre id="export-output" style="font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:0.8rem; margin-top:12px; color:#cbd5e1; white-space:pre-wrap; max-height:300px; overflow-y:auto; background:var(--bg-base); padding:12px; border-radius:var(--radius-sm); border:1px solid var(--border);"></pre>
         </div>
       </div>
     </div>
@@ -854,7 +1035,18 @@ STUDIO_HTML = """<!DOCTYPE html>
     let pollInterval = null;
     let lastLogLine = 0;
 
-    // Switch Tabs
+    function showToast(msg, type = "info") {
+      const container = document.getElementById("toast-container");
+      const t = document.createElement("div");
+      t.className = "toast " + (type === "success" ? "toast-success" : "toast-info");
+      t.innerHTML = `<span>${type === "success" ? "✅" : "ℹ️"}</span><span>${msg}</span>`;
+      container.appendChild(t);
+      setTimeout(() => {
+        t.style.opacity = "0";
+        setTimeout(() => t.remove(), 250);
+      }, 3000);
+    }
+
     function switchTab(tabId) {
       document.querySelectorAll(".nav-btn").forEach(b => {
         b.classList.remove("active");
@@ -870,8 +1062,23 @@ STUDIO_HTML = """<!DOCTYPE html>
       }
     }
 
-    
-    // Preset Application
+    function copyTerminalLogs() {
+      const text = document.getElementById("terminal").textContent;
+      navigator.clipboard.writeText(text);
+      showToast("Console logs copied to clipboard", "success");
+    }
+
+    function clearTerminal() {
+      document.getElementById("terminal").textContent = "[Terminal Cleared]";
+      showToast("Console cleared", "info");
+    }
+
+    function copyExportOutput() {
+      const text = document.getElementById("export-output").textContent;
+      navigator.clipboard.writeText(text);
+      showToast("Export JSON copied to clipboard", "success");
+    }
+
     function applyPreset() {
       const preset = document.getElementById("config-preset").value;
       if (preset === "charuco_std") {
@@ -883,6 +1090,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         document.getElementById("loss-scale").value = "1.0";
         document.getElementById("threads").value = "8";
         document.getElementById("stride").value = "1";
+        showToast("Applied Preset: ChArUco Standard (7x9, 45mm)");
       } else if (preset === "april_cuda") {
         document.getElementById("pattern-type").value = "april";
         document.getElementById("tag-family").value = "tag36h11";
@@ -893,33 +1101,35 @@ STUDIO_HTML = """<!DOCTYPE html>
         document.getElementById("threads").value = "8";
         document.getElementById("stride").value = "1";
         document.getElementById("use-cuda").checked = true;
+        showToast("Applied Preset: AprilTag Grid (GPU)");
       } else if (preset === "high_robust") {
         document.getElementById("loss-type").value = "cauchy";
         document.getElementById("loss-scale").value = "1.5";
+        showToast("Applied Preset: High-Robustness Cauchy Loss");
       } else if (preset === "quick_test") {
         document.getElementById("stride").value = "2";
         document.getElementById("loss-type").value = "huber";
         document.getElementById("loss-scale").value = "1.0";
+        showToast("Applied Preset: Quick Draft (Stride 2)");
       }
     }
 
-    // Pre-flight Dataset Validation
     async function runPreflightCheck() {
       const sel = document.getElementById("dataset-select");
       const path = sel ? sel.value : "";
       if (!path) {
-        alert("Please select a dataset to validate.");
+        showToast("Please choose a dataset first", "info");
         return;
       }
       switchTab('validate');
       const container = document.getElementById("validation-report-card");
-      container.innerHTML = '<div class="card" style="text-align:center; padding:24px;">Analyzing dataset structure and files...</div>';
+      container.innerHTML = '<div class="card" style="text-align:center; padding:32px; color:var(--text-muted);">Analyzing dataset frame synchronicity and pattern geometry...</div>';
       try {
         const res = await fetch("/api/validate?path=" + encodeURIComponent(path));
         const valData = await res.json();
         renderValidationReport(valData);
       } catch (e) {
-        container.innerHTML = `<div class="card" style="color:var(--danger);">Validation failed to execute: ${e}</div>`;
+        container.innerHTML = `<div class="card" style="color:var(--danger);">Validation failed: ${e}</div>`;
       }
     }
 
@@ -928,57 +1138,53 @@ STUDIO_HTML = """<!DOCTYPE html>
       const summary = data.summary || {};
       const cams = summary.cameras || {};
       const pat = summary.pattern || {};
-      const boards = summary.boards || [];
 
       let camsHtml = "";
       Object.entries(cams).forEach(([name, info]) => {
         camsHtml += `
-          <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:6px; padding:10px 14px; margin-bottom:8px;">
-            <div style="display:flex; justify-content:space-between; font-weight:600; font-size:0.85rem; color:var(--primary);">
-              <span>🎥 ${name}</span>
-              <span>${info.frames} synchronized frames</span>
+          <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px 14px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-weight:700; font-size:0.84rem; color:var(--primary);">🎥 ${name}</div>
+              <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Resolution: ${info.width} &times; ${info.height} px &bull; Path: ${info.folder}</div>
             </div>
-            <div style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">
-              Resolution: ${info.width} &times; ${info.height} px &bull; Folder: ${info.folder}
-            </div>
+            <span class="badge badge-cuda">${info.frames} Frames</span>
           </div>
         `;
       });
 
       let alertsHtml = "";
       (data.errors || []).forEach(err => {
-        alertsHtml += `<div style="background:rgba(239,68,68,0.15); border:1px solid var(--danger); border-radius:6px; padding:10px; margin-bottom:8px; color:#fca5a5; font-size:0.82rem;">❌ ${err}</div>`;
+        alertsHtml += `<div style="background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.4); border-radius:var(--radius-sm); padding:10px 14px; margin-bottom:8px; color:#fca5a5; font-size:0.8rem;">❌ ${err}</div>`;
       });
       (data.warnings || []).forEach(warn => {
-        alertsHtml += `<div style="background:rgba(245,158,11,0.15); border:1px solid var(--warning); border-radius:6px; padding:10px; margin-bottom:8px; color:#fde68a; font-size:0.82rem;">⚠️ ${warn}</div>`;
+        alertsHtml += `<div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-sm); padding:10px 14px; margin-bottom:8px; color:#fde68a; font-size:0.8rem;">⚠️ ${warn}</div>`;
       });
 
       const statusBadge = data.valid 
-        ? '<span class="badge badge-cuda" style="font-size:0.85rem;">✅ Dataset Ready for Calibration</span>'
-        : '<span class="badge btn-danger" style="font-size:0.85rem;">❌ Issues Found</span>';
+        ? '<span class="badge badge-cuda" style="font-size:0.8rem;">✅ All Pre-Flight Checks Passed</span>'
+        : '<span class="badge btn-danger" style="font-size:0.8rem;">❌ Issues Detected</span>';
 
       container.innerHTML = `
         <div class="card" style="margin-bottom:16px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-            <h3 style="margin:0;">Validation Result</h3>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <h3 style="margin:0;">Verification Summary</h3>
             ${statusBadge}
           </div>
           ${alertsHtml}
-          <div class="prop-row"><span class="prop-label">Dataset Path</span><span class="prop-val" style="font-family:monospace; font-size:0.75rem;">${summary.dataset_path || ""}</span></div>
-          <div class="prop-row"><span class="prop-label">Pattern Type</span><span class="prop-val">${pat.type || "N/A"} (${pat.squaresX || 0} &times; ${pat.squaresY || 0} squares)</span></div>
+          <div class="prop-row"><span class="prop-label">Dataset Directory</span><span class="prop-val" style="font-family:monospace; font-size:0.75rem;">${summary.dataset_path || ""}</span></div>
+          <div class="prop-row"><span class="prop-label">Pattern Geometry</span><span class="prop-val">${pat.type || "N/A"} (${pat.squaresX || 0} &times; ${pat.squaresY || 0} squares)</span></div>
           <div class="prop-row"><span class="prop-label">Target Boards</span><span class="prop-val">${pat.numberBoards || 0} board(s)</span></div>
-          ${pat.dictionary ? `<div class="prop-row"><span class="prop-label">ArUco Dictionary</span><span class="prop-val">${pat.dictionary} (Max ${pat.dict_capacity} markers)</span></div>` : ""}
-          ${pat.april_family ? `<div class="prop-row"><span class="prop-label">AprilTag Family</span><span class="prop-val">${pat.april_family} (Max ${pat.dict_capacity} tags)</span></div>` : ""}
+          ${pat.dictionary ? `<div class="prop-row"><span class="prop-label">ArUco Dictionary</span><span class="prop-val">${pat.dictionary} (Capacity: ${pat.dict_capacity} markers)</span></div>` : ""}
+          ${pat.april_family ? `<div class="prop-row"><span class="prop-label">AprilTag Family</span><span class="prop-val">${pat.april_family} (Capacity: ${pat.dict_capacity} tags)</span></div>` : ""}
         </div>
 
         <div class="card">
-          <h3>Camera Verification (${Object.keys(cams).length} detected)</h3>
+          <h3>Camera Details (${Object.keys(cams).length} synchronized cameras)</h3>
           ${camsHtml || '<div style="color:var(--text-muted); font-size:0.8rem;">No camera folders discovered.</div>'}
         </div>
       `;
     }
 
-    // System info & Datasets initialization
     async function initStudio() {
       try {
         const res = await fetch("/api/status");
@@ -986,52 +1192,12 @@ STUDIO_HTML = """<!DOCTYPE html>
         const badge = document.getElementById("cuda-badge");
         if (info.has_cuda) {
           badge.className = "badge badge-cuda";
-          badge.textContent = "CUDA: " + info.cuda_device;
+          badge.innerHTML = `<span class="dot-pulse"></span> CUDA: ${info.cuda_device}`;
         } else {
-          badge.textContent = "CPU Mode (" + info.cpu_count + " cores)";
+          badge.innerHTML = `<span class="dot-pulse"></span> CPU Mode (${info.cpu_count} cores)`;
         }
       } catch (e) {
-        console.warn("Status fetch fallback to demo mode", e);
-        const badge = document.getElementById("cuda-badge");
-        if (badge) {
-          badge.className = "badge badge-cuda";
-          badge.textContent = "CUDA: NVIDIA GeForce GTX 1650 Ti";
-        }
-        activeCalibrationData = {
-          "tool": "calico-dec2023",
-          "num_cameras": 3,
-          "pattern": "charuco",
-          "cuda": true,
-          "cameras": [
-            {
-              "name": "cam0",
-              "fx": 800.0, "fy": 800.0, "cx": 480.0, "cy": 360.0,
-              "k1": 0.0001, "k2": -0.00001, "p1": 0, "p2": 0, "rms": 0.22,
-              "T_world_camera": [[1, 0, 0, -250], [0, 1, 0, 150], [0, 0, 1, 600], [0, 0, 0, 1]]
-            },
-            {
-              "name": "cam1",
-              "fx": 800.0, "fy": 800.0, "cx": 480.0, "cy": 360.0,
-              "k1": 0.0001, "k2": -0.00001, "p1": 0, "p2": 0, "rms": 0.24,
-              "T_world_camera": [[0.9659, 0, 0.2588, 0], [0, 1, 0, 180], [-0.2588, 0, 0.9659, 580], [0, 0, 0, 1]]
-            },
-            {
-              "name": "cam2",
-              "fx": 800.0, "fy": 800.0, "cx": 480.0, "cy": 360.0,
-              "k1": 0.0001, "k2": -0.00001, "p1": 0, "p2": 0, "rms": 0.21,
-              "T_world_camera": [[0.9659, 0, -0.2588, 250], [0, 1, 0, 150], [0.2588, 0, 0.9659, 600], [0, 0, 0, 1]]
-            }
-          ],
-          "baselines": [
-            {"cam_a": "cam0", "cam_b": "cam1", "distance_mm": 252.4, "distance_cm": 25.24},
-            {"cam_a": "cam1", "cam_b": "cam2", "distance_mm": 252.4, "distance_cm": 25.24},
-            {"cam_a": "cam0", "cam_b": "cam2", "distance_mm": 500.0, "distance_cm": 50.0}
-          ],
-          "boards": [
-            {"index": 0, "T_world_board": [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]}
-          ]
-        };
-        renderVisualizer(activeCalibrationData);
+        console.warn("Status fetch fallback", e);
       }
 
       try {
@@ -1045,7 +1211,6 @@ STUDIO_HTML = """<!DOCTYPE html>
           sel.appendChild(opt);
         });
 
-        // Auto load first result if available
         if (list.length > 0) {
           sel.value = list[0].path;
           onDatasetChange();
@@ -1069,7 +1234,6 @@ STUDIO_HTML = """<!DOCTYPE html>
       }
     }
 
-    // Calibration Run Controls
     async function startCalibration() {
       const payload = {
         input_dir: document.getElementById("dataset-select").value,
@@ -1092,7 +1256,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       });
       const data = await res.json();
       if (!res.ok) {
-        alert("Failed to start calibration: " + (data.error || "Unknown error"));
+        showToast("Calibration failed: " + (data.error || "Unknown error"), "info");
         return;
       }
 
@@ -1100,10 +1264,12 @@ STUDIO_HTML = """<!DOCTYPE html>
       lastLogLine = 0;
       if (pollInterval) clearInterval(pollInterval);
       pollInterval = setInterval(pollLogs, 600);
+      showToast("Calibration started", "success");
     }
 
     async function cancelCalibration() {
       await fetch("/api/stop", { method: "POST" });
+      showToast("Calibration stop requested", "info");
     }
 
     async function pollLogs() {
@@ -1128,22 +1294,23 @@ STUDIO_HTML = """<!DOCTYPE html>
         } else if (state.status === "completed") {
           badge.className = "badge badge-cuda";
           clearInterval(pollInterval);
+          showToast("Calibration successfully completed!", "success");
           if (state.output_dir) {
             onDatasetChange();
           }
         } else if (state.status === "failed") {
           badge.className = "badge btn-danger";
           clearInterval(pollInterval);
+          showToast("Calibration failed", "info");
         }
       } catch (e) {
         console.error("Poll logs error", e);
       }
     }
 
-    // Export Handler
     async function runExport(format) {
       if (!activeCalibrationData) {
-        alert("Please load or run a calibration dataset first!");
+        showToast("Please select or solve a calibration dataset first", "info");
         return;
       }
       const res = await fetch("/api/export", {
@@ -1155,11 +1322,9 @@ STUDIO_HTML = """<!DOCTYPE html>
       const card = document.getElementById("export-result-card");
       card.style.display = "block";
       document.getElementById("export-output").textContent = JSON.stringify(result, null, 2);
+      showToast(`Export to ${format.toUpperCase()} complete!`, "success");
     }
 
-    // ----------------------------------------------------
-    // Three.js 3D Visualizer
-    // ----------------------------------------------------
     let scene, camera, renderer, controls;
     let frustumObjects = [], baselineObjects = [], boardObjects = [];
     const CAM_COLORS = [0x38bdf8, 0x10b981, 0xf59e0b, 0xef4444, 0x8b5cf6, 0x06b6d4];
@@ -1168,7 +1333,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     function initThree() {
       const container = document.getElementById("viewport");
       scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x0a0c12);
+      scene.background = new THREE.Color(0x090c13);
 
       camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 1, 15000);
       renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -1186,13 +1351,12 @@ STUDIO_HTML = """<!DOCTYPE html>
       dirLight.position.set(500, 1000, 750);
       scene.add(dirLight);
 
-      const grid = new THREE.GridHelper(2000, 40, 0x2a344d, 0x151b28);
+      const grid = new THREE.GridHelper(2000, 40, 0x242e45, 0x131825);
       scene.add(grid);
 
       const axes = new THREE.AxesHelper(200);
       scene.add(axes);
 
-      // Raycaster for clicking camera frustums
       const raycaster = new THREE.Raycaster();
       const mouse = new THREE.Vector2();
       renderer.domElement.addEventListener("click", (evt) => {
@@ -1264,7 +1428,6 @@ STUDIO_HTML = """<!DOCTYPE html>
     function renderVisualizer(data) {
       if (!scene) initThree();
 
-      // Clear previous objects
       frustumObjects.forEach(f => scene.remove(f));
       baselineObjects.forEach(b => scene.remove(b));
       boardObjects.forEach(bd => scene.remove(bd));
@@ -1276,7 +1439,6 @@ STUDIO_HTML = """<!DOCTYPE html>
       document.getElementById("vis-pattern").textContent = (data.pattern || "ChArUco / AprilTag").toUpperCase();
       document.getElementById("vis-hardware").textContent = data.cuda ? "CUDA GPU" : "CPU";
 
-      // Render Baselines list
       const bList = document.getElementById("vis-baselines-list");
       bList.innerHTML = "";
       (data.baselines || []).forEach(b => {
@@ -1286,7 +1448,6 @@ STUDIO_HTML = """<!DOCTYPE html>
         bList.appendChild(row);
       });
 
-      // Render Cameras list & 3D frustums
       const cList = document.getElementById("vis-cameras-list");
       cList.innerHTML = "";
       const positions = [];
@@ -1301,11 +1462,13 @@ STUDIO_HTML = """<!DOCTYPE html>
         card.style.borderLeftColor = hex;
         card.onclick = () => focusCamera(idx);
         card.innerHTML = `
-          <div style="font-weight:700; color:${hex}; margin-bottom:4px; font-size:0.88rem;">${c.name}</div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <div style="font-weight:700; color:${hex}; font-size:0.86rem;">${c.name}</div>
+            <span class="badge" style="color:var(--success); font-size:0.7rem;">RMS: ${c.rms ? c.rms.toFixed(3) + " px" : "0.24 px"}</span>
+          </div>
           <div class="prop-row"><span class="prop-label">fx, fy</span><span class="prop-val">${c.fx.toFixed(2)}, ${c.fy.toFixed(2)}</span></div>
           <div class="prop-row"><span class="prop-label">cx, cy</span><span class="prop-val">${c.cx.toFixed(1)}, ${c.cy.toFixed(1)}</span></div>
-          <div class="prop-row"><span class="prop-label">Reproj RMS</span><span class="prop-val" style="color:var(--success);">${c.rms ? c.rms.toFixed(4) + " px" : "0.24 px"}</span></div>
-          <button class="btn" style="width:100%; margin-top:8px; font-size:0.75rem; padding:4px;" onclick="lookFromCamera(${idx}); event.stopPropagation();">
+          <button class="btn btn-sm" style="width:100%; margin-top:8px;" onclick="lookFromCamera(${idx}); event.stopPropagation();">
             👁 Look Through Camera
           </button>
         `;
@@ -1329,11 +1492,10 @@ STUDIO_HTML = """<!DOCTYPE html>
         }
       });
 
-      // Draw baselines
       for (let i = 0; i < positions.length; i++) {
         for (let j = i + 1; j < positions.length; j++) {
           const geo = new THREE.BufferGeometry().setFromPoints([positions[i], positions[j]]);
-          const mat = new THREE.LineDashedMaterial({ color: 0x64748b, dashSize: 12, gapSize: 8, opacity: 0.6, transparent: true });
+          const mat = new THREE.LineDashedMaterial({ color: 0x475569, dashSize: 12, gapSize: 8, opacity: 0.6, transparent: true });
           const line = new THREE.Line(geo, mat);
           line.computeLineDistances();
           scene.add(line);
@@ -1341,12 +1503,11 @@ STUDIO_HTML = """<!DOCTYPE html>
         }
       }
 
-      // Draw boards
       (data.boards || []).forEach(b => {
         const T = b.T_world_board;
         if (!T) return;
         const geo = new THREE.PlaneGeometry(160, 160);
-        const mat = new THREE.MeshStandardMaterial({ color: 0x475569, wireframe: true, side: THREE.DoubleSide });
+        const mat = new THREE.MeshStandardMaterial({ color: 0x334155, wireframe: true, side: THREE.DoubleSide });
         const mesh = new THREE.Mesh(geo, mat);
         const m = new THREE.Matrix4();
         m.set(
@@ -1360,7 +1521,16 @@ STUDIO_HTML = """<!DOCTYPE html>
         boardObjects.push(mesh);
       });
 
-      // Fit scene camera
+      fitAllCameras();
+    }
+
+    function fitAllCameras() {
+      const positions = [];
+      frustumObjects.forEach(f => {
+        const p = new THREE.Vector3();
+        f.getWorldPosition(p);
+        positions.push(p);
+      });
       if (positions.length > 0) {
         const box = new THREE.Box3();
         positions.forEach(p => box.expandByPoint(p));
@@ -1383,7 +1553,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         const pos = new THREE.Vector3();
         frustumObjects[idx].getWorldPosition(pos);
         controls.target.copy(pos);
-        camera.position.set(pos.x + 400, pos.y + 400, pos.z + 600);
+        camera.position.set(pos.x + 350, pos.y + 350, pos.z + 550);
         camera.lookAt(pos);
       }
     }
@@ -1418,8 +1588,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     };
   </script>
 </body>
-</html>
-"""
+</html>"""
 
 
 class StudioRequestHandler(BaseHTTPRequestHandler):
@@ -1559,7 +1728,11 @@ class StudioRequestHandler(BaseHTTPRequestHandler):
 
             export_script = WORKSPACE_DIR / "tools" / "export_calibration.py"
             out_dir = Path(cali_dir) / f"export_{fmt}"
-            out_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                out_dir.mkdir(parents=True, exist_ok=True)
+            except PermissionError:
+                out_dir = WORKSPACE_DIR / "exports" / f"{Path(cali_dir).name}_{fmt}"
+                out_dir.mkdir(parents=True, exist_ok=True)
 
             cmd = [sys.executable, str(export_script), cali_dir, "--format", fmt, "-o", str(out_dir)]
             try:
