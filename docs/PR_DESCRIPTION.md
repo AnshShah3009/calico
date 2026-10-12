@@ -47,23 +47,18 @@ Reconstructed spatial relationship showing camera optical centers, viewing cones
 
 ---
 
-## Ground-Truth Verification Metrics
+## Ground-Truth Verification Thresholds
 
-CALICO's calibration outputs were benchmarked against synthetic ground truth generated from the MuJoCo physics engine (`sim/verify_mujoco_charuco.py`):
+Enforced by `sim/verify_mujoco_april.py` / `sim/verify_mujoco_charuco.py` (no `--ingest-intrinsics` with harness GT K — that would tautologically pass intrinsics):
 
-| Evaluation Metric | Ground Truth | Estimated Value / Error | Tolerance Threshold | Status |
-| :--- | :---: | :---: | :---: | :---: |
-| **Intrinsics ($f_x, f_y$)** | 799.92 px | 799.92 px ($\Delta = 0.00\text{ px}$) | $\le 1.00\text{ px}$ | **PASS** |
-| **Intrinsics Principal Point ($c_x, c_y$)** | (480.0, 360.0) px | (480.0, 360.0) px ($\Delta = 0.00\text{ px}$) | $\le 1.00\text{ px}$ | **PASS** |
-| **Relative Pose Rotation (`cam0` $\rightarrow$ `cam1`)** | — | **$0.518^\circ$** | $\le 3.0^\circ$ | **PASS** |
-| **Relative Pose Translation (`cam0` $\rightarrow$ `cam1`)** | — | **$7.53\text{ mm}$** | $\le 25.0\text{ mm}$ | **PASS** |
-| **Relative Pose Rotation (`cam1` $\rightarrow$ `cam2`)** | — | **$1.445^\circ$** | $\le 3.0^\circ$ | **PASS** |
-| **Relative Pose Translation (`cam1` $\rightarrow$ `cam2`)** | — | **$20.56\text{ mm}$** | $\le 25.0\text{ mm}$ | **PASS** |
-| **Reprojection RMS (`cam0`)** | — | **$0.217\text{ px}$** | $\le 1.50\text{ px}$ | **PASS** |
-| **Reprojection RMS (`cam1`)** | — | **$0.214\text{ px}$** | $\le 1.50\text{ px}$ | **PASS** |
-| **Reprojection RMS (`cam2`)** | — | **$0.284\text{ px}$** | $\le 1.50\text{ px}$ | **PASS** |
+| Metric | Tolerance |
+| :--- | :---: |
+| Intrinsics $f_x, f_y, c_x, c_y$ | $\le 2.0$ px |
+| Relative pose rotation | $\le 3.0^\circ$ |
+| Relative pose translation | $\le 25$ mm |
+| OpenCV reprojection RMS | $\le 1.5$ px |
 
-**Overall Verification Result**: **100% PASS across all metrics**
+Pose checks assert the `inv(T)` convention (calibration.json `T_world_camera` is camera-from-world) and do not min() over both conventions.
 
 ---
 
@@ -71,40 +66,38 @@ CALICO's calibration outputs were benchmarked against synthetic ground truth gen
 
 ### 1. OpenCV 5.0 Modernization & CUDA Support
 - Added `src/opencv-compat.hpp` to bridge API differences between OpenCV 3/4 and OpenCV 5 (`cv::aruco::CharucoBoard`, `cv::aruco::CharucoDetector`, detector parameters).
-- Added `src/apriltag_cuda.cu` and `src/cuda-detect.cpp` providing GPU-assisted preprocessing and detection paths with automatic CPU fallback when CUDA runtime or devices are unavailable.
-- Updated `src/camera-calibration.cpp` to correctly preserve ingested intrinsic matrices ($K$) when running calibration on OpenCV 5.
+- Added `src/apriltag_cuda.cu` and `src/cuda-detect.cpp` (`CALICO_USE_CUDA` / `CALICO_HAVE_CUAPRILTAGS`) for GPU BGR→gray and optional cuAprilTags (`tag36h11`).
+- ChArUco detection stays on CPU (no `cv::cuda::aruco`); `--use-cuda` still GPU-converts frames and can use Ceres CUDA when built with it.
+- Ingested $K$/distortion preserved correctly on OpenCV 5 (`--ingest-intrinsics`).
 
 ### 2. Optimization Robustness & Checkpointing
-- Integrated Ceres robust loss functions: `--loss=[trivial|huber|cauchy]` and `--loss-scale=[FLOAT]`, also configurable via YAML.
-- Implemented Stage 4/5 checkpointing (`checkpoint.txt` / `checkpoint_stage4.txt`) and `--resume=<dir>`.
+- Ceres losses: `--loss=[trivial|huber|cauchy]` and `--loss-scale=[FLOAT]` (validated; CLI overrides config).
+- Stage 4/5 checkpointing (`checkpoint.txt`, full double precision, atomic latest replace) and `--resume=<dir>`.
 
 ### 3. CALICO Studio Web GUI (`tools/calico_gui.py`)
-- Zero-dependency web UI built with Python's standard library `http.server` and modern JavaScript/Three.js.
-- Clean glassmorphism interface with dark theme, real-time calibration monitoring, and toast notifications.
-- 4 primary tabs: **Calibration Wizard**, **Pre-Flight Check**, **3D Visualizer & Inspector**, and **Export Hub**.
+- Loopback bind (`127.0.0.1`) + bearer token by default; no phantom `--stride`.
+- Wizard presets, live solver terminal, 3D visualizer, export hub.
 
 ### 4. Pre-Flight Dataset Validator (`tools/validate_dataset.py`)
-- Validates multi-camera dataset integrity before launching heavy calibration:
-  - Verifies synchronized frame counts across cameras.
-  - Checks uniform image resolution across all camera feeds.
-  - Checks pattern geometry and marker length bounds (`markerLength < squareLength`).
-  - Verifies total board markers do not exceed dictionary capacity (supporting both ArUco and AprilTag families).
+- Frame sync, resolution consistency, ChArUco/AprilTag capacity checks, `pattern_square_mm*.txt` presence.
 
 ### 5. Multi-Format Calibration Exporter (`tools/export_calibration.py`)
-- Standard OpenCV `cv::FileStorage` YAML format (`%YAML:1.0`).
-- ROS / ROS2 `CameraInfo` YAML (Plumb Bob / rational polynomial models).
-- Nerfstudio `transforms.json` format for NeRF and Gaussian Splatting.
-- COLMAP reconstruction format (`cameras.txt`, `images.txt`).
+- ROS CameraInfo, Nerfstudio `transforms.json`, COLMAP, OpenCV FileStorage; safe camera names; prefers JSON `width`/`height`.
 
 ### 6. Multi-Camera Ingestion Tool (`tools/ingest_video.py`)
-- Synchronous multi-camera video ingestion, timestamp alignment, and automated CALICO directory preparation.
+- Video → CALICO layout; `--boards` reflected in `network_specification_file.yaml`.
 
 ### 7. Testing & CI/CD
-- **C++ CTest Suite** (`src/tests/`): pattern params, helpers, and related unit tests run via `calico_tests` in Docker.
-- **Python Test Suite** (`tools/test_tools.py`): video ingestion, multi-format export, dataset pre-flight validation (AprilTag and ChArUco), GUI argv builder, and visualizer generation.
-- **Docker & CI/CD**:
-  - Dual `Dockerfile.cpu` and `Dockerfile.cuda` definitions.
-  - GitHub Actions workflow (`.github/workflows/ci.yml`) for Python checks and both CPU and CUDA Docker builds on PRs.
+- Python suite (`tools/test_tools.py`) and C++ `calico_tests` in Docker.
+- PR CI builds **both** `calico-cpu` and `calico-cuda`.
+
+### 8. Review hardening (post-Greptile / deep review)
+- Restored CUDA macro path; cuAprilTags `dev_ptr` + RGB upload; CUDA error checks.
+- Resume residuals, ingested tangential distortion, per-board AprilTag **and** ChArUco mm scales.
+- CLI-vs-config precedence for `num-pattern` / `num-threads` / `loss` / `loss-scale` / `max-images`.
+- GUI auth + XSS escaping; visualizer `</script>` hardening.
+- Sim harness: no self-fed ingest, fixed pose convention, camera count/name asserts, stale pattern regeneration.
+- Docker jammy `libwebp7`; README/AGENTS phantom-flag cleanup.
 
 ---
 
@@ -136,7 +129,17 @@ python3 tools/validate_dataset.py results/april-in
 python3 tools/export_calibration.py results/run5 --format all -o exports/run5_all
 ```
 
-### 5. Run CTest Suite (Inside Docker)
+### 5. Run C++ Unit Tests (Inside Docker)
 ```bash
-docker compose run --rm calico-cpu ctest --test-dir /calico/src/build --output-on-failure
+docker compose run --rm --entrypoint calico_tests calico-cpu
+# CUDA image (CI also builds this on PRs):
+docker compose run --rm --entrypoint calico_tests calico-cuda
+```
+
+### 6. MuJoCo Ground-Truth Verification
+```bash
+MUJOCO_GL=osmesa python3 sim/verify_mujoco_april.py
+MUJOCO_GL=osmesa python3 sim/verify_mujoco_charuco.py
+# optional GPU path:
+MUJOCO_GL=osmesa python3 sim/verify_mujoco_april.py --use-cuda
 ```
