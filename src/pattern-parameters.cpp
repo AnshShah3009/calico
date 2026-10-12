@@ -33,7 +33,7 @@ bool readCharucoSpecificationFile(string filename, patternParameters &params) {
     FileStorage fs(filename, FileStorage::READ);
     if(!fs.isOpened())
         return false;
-   // fs["type"] >> params.type;
+    params.type = charuco;
     fs["squaresX"] >> params.squaresX;
     fs["squaresY"] >> params.squaresY;
     fs["squareLength"] >> params.squareLength;

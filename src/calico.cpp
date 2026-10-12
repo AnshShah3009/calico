@@ -597,17 +597,7 @@ int main(int argc, char **argv){
         }
     }
 
-    // Handle --no-overwrite (unless --force)
-    if (opts.no_overwrite && !opts.force) {
-        string results_file = output_dir + "total_results.txt";
-        ifstream test(results_file.c_str());
-        if (test.good()) {
-            cerr << "ERROR: output directory already contains results. "
-                 << "Use --timestamp, --force, or remove old results." << endl;
-            exit(1);
-        }
-    }
-
+    // Prepare output directory path taking --auto-rename and --timestamp into account first
     EnsureDirHasTrailingBackslash(output_dir);
     mkdir(output_dir.c_str(), S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
 
@@ -634,6 +624,17 @@ int main(int argc, char **argv){
         string ts_dir = output_dir + "calico_" + ts + "/";
         mkdir(ts_dir.c_str(), S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
         output_dir = ts_dir;
+    }
+
+    // Handle --no-overwrite (unless --force) on final effective output directory
+    if (opts.no_overwrite && !opts.force) {
+        string results_file = output_dir + "total_results.txt";
+        ifstream test(results_file.c_str());
+        if (test.good()) {
+            cerr << "ERROR: output directory already contains results. "
+                 << "Use --timestamp, --force, or remove old results." << endl;
+            exit(1);
+        }
     }
 
     ofstream out;
@@ -1600,8 +1601,10 @@ void DryRunValidation(const string& input_dir, const string& output_dir,
 
         int ext_count = 0;
         for (size_t j = 0; j < im_names.size(); j++) {
-            string ext = im_names[j].substr(im_names[j].size() - 3);
-            if (ext != "txt") ext_count++;
+            if (im_names[j].size() >= 3) {
+                string ext = im_names[j].substr(im_names[j].size() - 3);
+                if (ext != "txt") ext_count++;
+            }
         }
 
         string int_dir = cam_dir + "/internal/";
@@ -1610,8 +1613,10 @@ void DryRunValidation(const string& input_dir, const string& output_dir,
             vector<string> int_names;
             ReadDirectory(int_dir, int_names);
             for (size_t j = 0; j < int_names.size(); j++) {
-                string ext = int_names[j].substr(int_names[j].size() - 3);
-                if (ext != "txt") int_count++;
+                if (int_names[j].size() >= 3) {
+                    string ext = int_names[j].substr(int_names[j].size() - 3);
+                    if (ext != "txt") int_count++;
+                }
             }
         }
 
