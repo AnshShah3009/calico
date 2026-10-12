@@ -1,0 +1,10 @@
+%YAML:1.0
+# Variant: tag36h11 8x6
+type: april
+squaresX: 8
+squaresY: 6
+squareLength: 64
+margins: 20
+tagSpace: 12
+numberBoards: 2
+april_family: tag36h11

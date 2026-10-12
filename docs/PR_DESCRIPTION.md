@@ -51,6 +51,11 @@ Camera frustums, baselines (mm), and board poses from `calibration.json`:
 | :---: | :---: |
 | ![April network](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/calibrated_camera_network_3d.png) | ![ChArUco network](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/calibrated_camera_network_charuco_3d.png) |
 
+### 4. AprilTag Grid Variants (families × sizes)
+OpenCV render + detect across `tag16h5`, `tag25h9`, `tag36h10`, `tag36h11` and multiple grid densities (9/9 full detections). Sample YAML specs live in `configs/april-variants/`.
+
+![AprilTag grid variants](https://raw.githubusercontent.com/AnshShah3009/calico/feat/setup-opencv5-cuda/docs/images/april_grids_gallery.png)
+
 ---
 
 ## Ground-Truth Verification Thresholds
@@ -66,7 +71,7 @@ Enforced by `sim/verify_mujoco_april.py` / `sim/verify_mujoco_charuco.py` (no `-
 
 Pose checks assert the `inv(T)` convention (calibration.json `T_world_camera` is camera-from-world) and do not min() over both conventions.
 
-**Local checks for this update:** `python3 tools/test_tools.py` → **25/25 OK**. Showcase images regenerated from MuJoCo sim outputs + recovered `calibration.json` networks.
+**Local checks for this update:** `python3 tools/test_tools.py` (includes AprilTag multi-family grid render/detect). Showcase images from MuJoCo runs + AprilTag variant gallery (`tag16h5` / `tag25h9` / `tag36h10` / `tag36h11`).
 
 ---
 

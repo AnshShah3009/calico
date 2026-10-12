@@ -73,11 +73,11 @@ ChArUco detection stays on CPU (OpenCV has no `cv::cuda::aruco`). `--use-cuda` s
 
 `--april` (exclusive with `--charuco`) uses a grid of AprilTags (`squaresX` × `squaresY` tags, `tagSpace` gap, one or more `numberBoards`).
 
-Supported families: `tag36h11` (default), `tag25h9`, `tag16h5` (render + detect), plus Kaess `tag25h7` / `tag36h9` (detect; OpenCV can render `tag36h11` / `tag25h9` / `tag16h5`). Aliases such as `tagCodes36h11` are accepted.
+Supported families: `tag36h11` (default), `tag25h9`, `tag16h5`, `tag36h10` (OpenCV render + detect), plus Kaess `tag25h7` / `tag36h9` (detect-only; no pattern PNGs). Aliases such as `tagCodes36h11` are accepted.
 
 Detection order: GPU **cuAprilTags** (`tag36h11` only, if linked) → Kaess CPU → OpenCV `DICT_APRILTAG_*`. `--use-cuda` always GPU-converts BGR→gray first.
 
-Example spec: `configs/april-grid.yaml`. Generate with `--april --create-patterns`, then calibrate with `--april --calibrate`.
+Example specs: `configs/april-grid.yaml` (default 6×6 `tag36h11`) and `configs/april-variants/` (`tag16h5` / `tag25h9` / `tag36h10` / dense `tag36h11`). Generate with `--april --create-patterns`, then calibrate with `--april --calibrate`.
 
 ## Running
 

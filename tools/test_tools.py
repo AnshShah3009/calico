@@ -768,6 +768,60 @@ class TestCharucoCudaAndCalibrationVerification(unittest.TestCase):
         self.assertNotEqual(dist_out.flatten()[3], 0.0, 'p2 should not be zeroed out')
 
 
+class TestAprilTagGridVariants(unittest.TestCase):
+    """Render CALICO-style AprilTag grids for each OpenCV family and detect all tags."""
+
+    @staticmethod
+    def _render_grid(dict_id: int, sx: int, sy: int, side: int = 64, gap: int = 12, margins: int = 16):
+        dictionary = cv2.aruco.getPredefinedDictionary(dict_id)
+        w = sx * (side + gap) - gap + 2 * margins
+        h = sy * (side + gap) - gap + 2 * margins
+        board = np.full((h, w), 255, dtype=np.uint8)
+        start_x = margins
+        start_y = h - side - margins
+        tag_id = 0
+        for y in range(sy):
+            for x in range(sx):
+                marker = np.zeros((side, side), dtype=np.uint8)
+                dictionary.generateImageMarker(tag_id, side, marker, 1)
+                x0 = start_x + x * (side + gap)
+                y0 = start_y - y * (side + gap)
+                board[y0:y0 + side, x0:x0 + side] = marker
+                tag_id += 1
+        return board, dictionary
+
+    def test_families_and_sizes_detect_all_tags(self):
+        cases = [
+            (cv2.aruco.DICT_APRILTAG_36h11, 6, 6),
+            (cv2.aruco.DICT_APRILTAG_36h11, 8, 6),
+            (cv2.aruco.DICT_APRILTAG_25h9, 5, 5),
+            (cv2.aruco.DICT_APRILTAG_25h9, 7, 5),
+            (cv2.aruco.DICT_APRILTAG_16h5, 5, 5),
+            (cv2.aruco.DICT_APRILTAG_16h5, 6, 5),
+            (cv2.aruco.DICT_APRILTAG_36h10, 6, 6),
+            (cv2.aruco.DICT_APRILTAG_36h10, 10, 8),
+        ]
+        for dict_id, sx, sy in cases:
+            with self.subTest(dict_id=dict_id, grid=f"{sx}x{sy}"):
+                board, dictionary = self._render_grid(dict_id, sx, sy)
+                det = cv2.aruco.ArucoDetector(dictionary, cv2.aruco.DetectorParameters())
+                _corners, ids, _rej = det.detectMarkers(board)
+                self.assertIsNotNone(ids)
+                self.assertEqual(len(ids), sx * sy)
+
+    def test_april_variant_configs_exist(self):
+        cfg_dir = Path(__file__).resolve().parent.parent / "configs" / "april-variants"
+        expected = {
+            "april-tag16h5-5x5.yaml",
+            "april-tag25h9-5x5.yaml",
+            "april-tag36h10-6x6.yaml",
+            "april-tag36h11-8x6.yaml",
+        }
+        self.assertTrue(cfg_dir.is_dir())
+        found = {p.name for p in cfg_dir.glob("april-*.yaml")}
+        self.assertTrue(expected.issubset(found))
+
+
 if __name__ == "__main__":
     unittest.main()
 
