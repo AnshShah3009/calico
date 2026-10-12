@@ -142,7 +142,7 @@ MUJOCO_GL=osmesa python3 sim/verify_mujoco_april.py
 MUJOCO_GL=osmesa python3 sim/verify_mujoco_april.py --use-cuda
 ```
 
-Verification thresholds: $f_x, f_y \le 1.0\text{ px}$, relative rotation $\le 0.5^\circ$, relative translation $\le 10\text{ mm}$, reprojection $\text{RMS} \le 1.5\text{ px}$.
+Verification thresholds (enforced by `sim/verify_mujoco_*.py`): $f_x, f_y, c_x, c_y \le 2.0\text{ px}$, relative rotation $\le 3.0^\circ$, relative translation $\le 25\text{ mm}$, reprojection $\text{RMS} \le 1.5\text{ px}$.
 
 
 ### Dataset Pre-Flight Validation
@@ -155,8 +155,7 @@ python3 tools/validate_dataset.py <dataset_dir> --json
 ```
 
 ### CALICO Studio Web GUI
-Launch the zero-dependency browser interface to configure calibrations, run pre-flight dataset checks, monitor real-time optimization progress, inspect 3D camera frustums, and export to OpenCV/ROS/NeRF/COLMAP:
-Launch the zero-dependency browser interface to configure calibrations, monitor real-time optimization progress, inspect 3D camera frustums, and export to ROS/NeRF/COLMAP:
+Launch the zero-dependency browser interface to configure calibrations, run pre-flight dataset checks, monitor real-time optimization progress, inspect 3D camera frustums, and export to ROS/NeRF/COLMAP:
 
 ```bash
 ./tools/calico_gui.py --port 8080

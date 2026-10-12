@@ -47,6 +47,7 @@ jobs:
   build-docker-cpu:
     name: Build & Verify Docker calico-cpu
     runs-on: ubuntu-22.04
+    timeout-minutes: 90
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -66,10 +67,33 @@ jobs:
         run: |
           docker compose run --rm --entrypoint calico_tests calico-cpu
 
+  build-docker-cuda:
+    name: Build & Verify Docker calico-cuda
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build calico-cuda Image
+        run: |
+          docker compose build calico-cuda
+
+      - name: Verify CUDA CLI Help Output
+        run: |
+          docker compose run --rm calico-cuda --help
+
+      - name: Run C++ Unit Tests in CUDA Container
+        run: |
+          docker compose run --rm --entrypoint calico_tests calico-cuda
+
   publish-docker-images:
     name: Build & Push Docker Hub Images
     runs-on: ubuntu-22.04
-    needs: [python-tools-check, build-docker-cpu]
+    needs: [python-tools-check, build-docker-cpu, build-docker-cuda]
     if: "${{ github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && github.event_name == 'push') || startsWith(github.ref, 'refs/tags/v') }}"
     steps:
       - name: Checkout Code

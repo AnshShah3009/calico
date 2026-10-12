@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 """CALICO Studio: Zero-dependency Interactive Web GUI for CALICO Calibration.
 
@@ -865,10 +864,6 @@ STUDIO_HTML = """<!DOCTYPE html>
                 <label>Worker Threads</label>
                 <input type="number" id="threads" value="8" min="1" max="64">
               </div>
-              <div class="form-group">
-                <label>Frame Stride</label>
-                <input type="number" id="stride" value="1" min="1">
-              </div>
             </div>
             <div class="checkbox-group" style="margin-bottom:8px;">
               <input type="checkbox" id="use-cuda" checked>
@@ -1054,11 +1049,20 @@ STUDIO_HTML = """<!DOCTYPE html>
       return h;
     }
 
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
     function showToast(msg, type = "info") {
       const container = document.getElementById("toast-container");
       const t = document.createElement("div");
       t.className = "toast " + (type === "success" ? "toast-success" : "toast-info");
-      t.innerHTML = `<span>${type === "success" ? "✅" : "ℹ️"}</span><span>${msg}</span>`;
+      t.innerHTML = `<span>${type === "success" ? "✅" : "ℹ️"}</span><span>${escapeHtml(msg)}</span>`;
       container.appendChild(t);
       setTimeout(() => {
         t.style.opacity = "0";
@@ -1108,7 +1112,6 @@ STUDIO_HTML = """<!DOCTYPE html>
         document.getElementById("loss-type").value = "huber";
         document.getElementById("loss-scale").value = "1.0";
         document.getElementById("threads").value = "8";
-        document.getElementById("stride").value = "1";
         showToast("Applied Preset: ChArUco Standard (7x9, 45mm)");
       } else if (preset === "april_cuda") {
         document.getElementById("pattern-type").value = "april";
@@ -1118,7 +1121,6 @@ STUDIO_HTML = """<!DOCTYPE html>
         document.getElementById("loss-type").value = "huber";
         document.getElementById("loss-scale").value = "1.0";
         document.getElementById("threads").value = "8";
-        document.getElementById("stride").value = "1";
         document.getElementById("use-cuda").checked = true;
         showToast("Applied Preset: AprilTag Grid (GPU)");
       } else if (preset === "high_robust") {
@@ -1126,10 +1128,10 @@ STUDIO_HTML = """<!DOCTYPE html>
         document.getElementById("loss-scale").value = "1.5";
         showToast("Applied Preset: High-Robustness Cauchy Loss");
       } else if (preset === "quick_test") {
-        document.getElementById("stride").value = "2";
+        document.getElementById("threads").value = "4";
         document.getElementById("loss-type").value = "huber";
         document.getElementById("loss-scale").value = "1.0";
-        showToast("Applied Preset: Quick Draft (Stride 2)");
+        showToast("Applied Preset: Quick Draft (fewer threads)");
       }
     }
 
@@ -1148,7 +1150,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         const valData = await res.json();
         renderValidationReport(valData);
       } catch (e) {
-        container.innerHTML = `<div class="card" style="color:var(--danger);">Validation failed: ${e}</div>`;
+        container.innerHTML = `<div class="card" style="color:var(--danger);">Validation failed: ${escapeHtml(e)}</div>`;
       }
     }
 
@@ -1163,20 +1165,20 @@ STUDIO_HTML = """<!DOCTYPE html>
         camsHtml += `
           <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px 14px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
             <div>
-              <div style="font-weight:700; font-size:0.84rem; color:var(--primary);">🎥 ${name}</div>
-              <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Resolution: ${info.width} &times; ${info.height} px &bull; Path: ${info.folder}</div>
+              <div style="font-weight:700; font-size:0.84rem; color:var(--primary);">🎥 ${escapeHtml(name)}</div>
+              <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Resolution: ${escapeHtml(info.width)} &times; ${escapeHtml(info.height)} px &bull; Path: ${escapeHtml(info.folder)}</div>
             </div>
-            <span class="badge badge-cuda">${info.frames} Frames</span>
+            <span class="badge badge-cuda">${escapeHtml(info.frames)} Frames</span>
           </div>
         `;
       });
 
       let alertsHtml = "";
       (data.errors || []).forEach(err => {
-        alertsHtml += `<div style="background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.4); border-radius:var(--radius-sm); padding:10px 14px; margin-bottom:8px; color:#fca5a5; font-size:0.8rem;">❌ ${err}</div>`;
+        alertsHtml += `<div style="background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.4); border-radius:var(--radius-sm); padding:10px 14px; margin-bottom:8px; color:#fca5a5; font-size:0.8rem;">❌ ${escapeHtml(err)}</div>`;
       });
       (data.warnings || []).forEach(warn => {
-        alertsHtml += `<div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-sm); padding:10px 14px; margin-bottom:8px; color:#fde68a; font-size:0.8rem;">⚠️ ${warn}</div>`;
+        alertsHtml += `<div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-sm); padding:10px 14px; margin-bottom:8px; color:#fde68a; font-size:0.8rem;">⚠️ ${escapeHtml(warn)}</div>`;
       });
 
       const statusBadge = data.valid 
@@ -1262,7 +1264,6 @@ STUDIO_HTML = """<!DOCTYPE html>
         loss: document.getElementById("loss-type").value,
         loss_scale: parseFloat(document.getElementById("loss-scale").value),
         threads: parseInt(document.getElementById("threads").value),
-        stride: parseInt(document.getElementById("stride").value),
         use_cuda: document.getElementById("use-cuda").checked,
         checkpoint: document.getElementById("checkpoint").checked,
         json_export: document.getElementById("json-export").checked
@@ -1463,7 +1464,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       (data.baselines || []).forEach(b => {
         const row = document.createElement("div");
         row.className = "prop-row";
-        row.innerHTML = `<span class="prop-label">${b.cam_a} &harr; ${b.cam_b}</span><span class="prop-val">${b.distance_mm} mm</span>`;
+        row.innerHTML = `<span class="prop-label">${escapeHtml(b.cam_a)} &harr; ${escapeHtml(b.cam_b)}</span><span class="prop-val">${escapeHtml(b.distance_mm)} mm</span>`;
         bList.appendChild(row);
       });
 
@@ -1474,6 +1475,9 @@ STUDIO_HTML = """<!DOCTYPE html>
       (data.cameras || []).forEach((c, idx) => {
         const color = CAM_COLORS[idx % CAM_COLORS.length];
         const hex = CAM_HEX[idx % CAM_HEX.length];
+        const fx = Number(c.fx), fy = Number(c.fy), cx = Number(c.cx), cy = Number(c.cy);
+        const rmsTxt = (c.rms != null && !isNaN(Number(c.rms)))
+          ? Number(c.rms).toFixed(3) + " px" : "n/a";
 
         const card = document.createElement("div");
         card.id = "cam-card-" + idx;
@@ -1482,11 +1486,11 @@ STUDIO_HTML = """<!DOCTYPE html>
         card.onclick = () => focusCamera(idx);
         card.innerHTML = `
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-            <div style="font-weight:700; color:${hex}; font-size:0.86rem;">${c.name}</div>
-            <span class="badge" style="color:var(--success); font-size:0.7rem;">RMS: ${c.rms ? c.rms.toFixed(3) + " px" : "0.24 px"}</span>
+            <div style="font-weight:700; color:${hex}; font-size:0.86rem;">${escapeHtml(c.name)}</div>
+            <span class="badge" style="color:var(--success); font-size:0.7rem;">RMS: ${escapeHtml(rmsTxt)}</span>
           </div>
-          <div class="prop-row"><span class="prop-label">fx, fy</span><span class="prop-val">${c.fx.toFixed(2)}, ${c.fy.toFixed(2)}</span></div>
-          <div class="prop-row"><span class="prop-label">cx, cy</span><span class="prop-val">${c.cx.toFixed(1)}, ${c.cy.toFixed(1)}</span></div>
+          <div class="prop-row"><span class="prop-label">fx, fy</span><span class="prop-val">${fx.toFixed(2)}, ${fy.toFixed(2)}</span></div>
+          <div class="prop-row"><span class="prop-label">cx, cy</span><span class="prop-val">${cx.toFixed(1)}, ${cy.toFixed(1)}</span></div>
           <button class="btn btn-sm" style="width:100%; margin-top:8px;" onclick="lookFromCamera(${idx}); event.stopPropagation();">
             👁 Look Through Camera
           </button>

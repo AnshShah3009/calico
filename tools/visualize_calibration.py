@@ -85,13 +85,36 @@ def compute_camera_metrics(cameras: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+def _json_for_script(obj: Any) -> str:
+    """JSON-encode for embedding in a <script> block (escape </script> breakouts)."""
+    return (
+        json.dumps(obj, separators=(",", ":"))
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
+
+
+def _html_escape(text: str) -> str:
+    return (
+        str(text)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
 def generate_html(data: Dict[str, Any], title: str = "CALICO 3D Calibration Report") -> str:
     """Generate self-contained interactive 3D HTML dashboard using Three.js."""
     cameras = data.get("cameras", [])
     metrics = compute_camera_metrics(cameras)
     boards = data.get("boards", [])
-    json_str = json.dumps(data)
-    metrics_str = json.dumps(metrics)
+    json_str = _json_for_script(data)
+    metrics_str = _json_for_script(metrics)
+    title = _html_escape(title)
 
     html_template = f"""<!DOCTYPE html>
 <html lang="en">

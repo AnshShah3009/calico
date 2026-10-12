@@ -2,6 +2,7 @@
 """Render a multi-camera ChArUco scene in MuJoCo, run CALICO, and verify vs Ground Truth."""
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -124,17 +125,24 @@ def camera_specs() -> list[dict]:
 
 
 def generate_charuco_patterns() -> None:
-    """Ensure ChArUco pattern images exist."""
+    """Ensure ChArUco pattern images exist and match the current config."""
     BOARD_SRC.mkdir(parents=True, exist_ok=True)
     p0 = BOARD_SRC / "Board0.png"
     p1 = BOARD_SRC / "Board1.png"
-    if p0.exists() and p1.exists():
+    cfg = ROOT / "configs" / "charuco-grid.yaml"
+    stamp = BOARD_SRC / ".charuco_cfg_sha1"
+    cfg_hash = hashlib.sha1(cfg.read_bytes()).hexdigest() if cfg.exists() else ""
+    if p0.exists() and p1.exists() and stamp.exists() and stamp.read_text().strip() == cfg_hash:
         return
+    # Config changed (or first run): drop stale boards so CALICO geometry matches renders.
+    for stale in (p0, p1):
+        if stale.exists():
+            stale.unlink()
 
     print("Generating ChArUco pattern boards using calico-cpu...")
     pat_in = SIM_ROOT / "charuco-pat-in"
     pat_in.mkdir(parents=True, exist_ok=True)
-    shutil.copy(ROOT / "configs" / "charuco-grid.yaml", pat_in / "network_specification_file.yaml")
+    shutil.copy(cfg, pat_in / "network_specification_file.yaml")
 
     cmd = [
         "docker",
@@ -161,6 +169,7 @@ def generate_charuco_patterns() -> None:
     subprocess.run(cmd, check=True)
     if not (p0.exists() and p1.exists()):
         raise RuntimeError("Failed to generate ChArUco pattern images.")
+    stamp.write_text(cfg_hash + "\n", encoding="utf-8")
 
 
 def build_xml(cams: list[dict], half_w: float, half_h: float) -> str:
@@ -463,12 +472,24 @@ def compare() -> int:
         print("Missing", cali_path)
         return 2
     est = json.loads(cali_path.read_text())
+    est_cams = est.get("cameras") or []
+    if len(est_cams) != N_CAMS:
+        print(f"Expected {N_CAMS} cameras in calibration.json, got {len(est_cams)}")
+        return 2
+    gt_by_name = {c["name"]: c for c in gt["cameras"]}
+    ordered = []
+    for c in est_cams:
+        name = c.get("name", "")
+        if name not in gt_by_name:
+            print(f"Calibration camera '{name}' has no GT counterpart")
+            return 2
+        ordered.append((gt_by_name[name], c))
     fx_gt, fy_gt = gt["fx"], gt["fy"]
     cx_gt, cy_gt = gt["cx"], gt["cy"]
     print("\n=== Intrinsics (px) ===")
     print(f"{'cam':6} {'fx_gt':>8} {'fx':>8} {'dfx':>8} {'fy':>8} {'dfy':>8} {'cx':>8} {'dcx':>8} {'cy':>8} {'dcy':>8}")
     k_ok = True
-    for cam in est["cameras"]:
+    for _gtc, cam in ordered:
         dfx = cam["fx"] - fx_gt
         dfy = cam["fy"] - fy_gt
         dcx = cam["cx"] - cx_gt
@@ -482,8 +503,8 @@ def compare() -> int:
             k_ok = False
 
     print("\n=== Relative camera poses (OpenCV, mm) vs GT ===")
-    Tgt = [mat4(c["T_world_camera_mm"]) for c in gt["cameras"]]
-    Test = [mat4(c["T_world_camera"]) for c in est["cameras"]]
+    Tgt = [mat4(g["T_world_camera_mm"]) for g, _ in ordered]
+    Test = [mat4(c["T_world_camera"]) for _, c in ordered]
     Test_inv = [inv_T(T) for T in Test]
 
     def report(label, Test_use):

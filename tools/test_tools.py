@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import subprocess
 import sys
 import tempfile
@@ -15,6 +16,20 @@ import cv2
 import numpy as np
 
 from export_calibration import rot_mat_to_quat_wxyz
+
+
+def _tool_python() -> str:
+    """Python for spawning tools/*.py subprocesses.
+
+    Some agent harnesses set sys.executable to an AppImage/launcher that
+    returns 0 without running the script. Prefer a real CPython binary.
+    """
+    exe = Path(sys.executable).name.lower()
+    if "appimage" in exe or "t3-code" in exe:
+        for cand in ("/usr/bin/python3.8", "/usr/bin/python3.10", "/usr/bin/python3"):
+            if os.path.isfile(cand) and os.access(cand, os.X_OK):
+                return cand
+    return sys.executable
 
 
 class TestRotationMatrixToQuaternion(unittest.TestCase):
@@ -138,7 +153,7 @@ class TestExportCalibration(unittest.TestCase):
         script = Path(__file__).resolve().parent / "export_calibration.py"
         out_dir = self.root / "exports"
         subprocess.check_call(
-            [sys.executable, str(script), str(self.root), "--format", "all", "-o", str(out_dir)]
+            [_tool_python(), str(script), str(self.root), "--format", "all", "-o", str(out_dir)]
         )
 
         # ROS CameraInfo
@@ -187,7 +202,7 @@ class TestExportCalibration(unittest.TestCase):
         if april_cali.exists() and (april_cali / "calibration.json").exists():
             out_april = self.root / "export_april"
             subprocess.check_call([
-                sys.executable, str(script), str(april_cali), "--format", "all", "-o", str(out_april)
+                _tool_python(), str(script), str(april_cali), "--format", "all", "-o", str(out_april)
             ])
             self.assertTrue((out_april / "ros" / "cam0_camera_info.yaml").exists())
             self.assertTrue((out_april / "nerfstudio" / "transforms.json").exists())
@@ -199,7 +214,7 @@ class TestExportCalibration(unittest.TestCase):
         if charuco_cali.exists() and (charuco_cali / "calibration.json").exists():
             out_charuco = self.root / "export_charuco"
             subprocess.check_call([
-                sys.executable, str(script), str(charuco_cali), "--format", "all", "-o", str(out_charuco)
+                _tool_python(), str(script), str(charuco_cali), "--format", "all", "-o", str(out_charuco)
             ])
             self.assertTrue((out_charuco / "ros" / "111F816F_camera_info.yaml").exists())
             self.assertTrue((out_charuco / "nerfstudio" / "transforms.json").exists())
@@ -230,7 +245,7 @@ class TestIngestVideo(unittest.TestCase):
         dataset_dir = self.root / "calico_dataset"
         subprocess.check_call(
             [
-                sys.executable,
+                _tool_python(),
                 str(script),
                 "--video-dir",
                 str(self.root),
@@ -297,7 +312,7 @@ class TestVisualizeCalibration(unittest.TestCase):
     def test_visualize_html_generation(self):
         script = Path(__file__).resolve().parent / "visualize_calibration.py"
         report_html = self.root / "report.html"
-        subprocess.check_call([sys.executable, str(script), str(self.root), "-o", str(report_html)])
+        subprocess.check_call([_tool_python(), str(script), str(self.root), "-o", str(report_html)])
 
         self.assertTrue(report_html.exists())
         content = report_html.read_text(encoding="utf-8")

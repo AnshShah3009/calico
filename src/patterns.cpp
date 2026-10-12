@@ -352,14 +352,15 @@ void PatternsCreated::ConstructCharucoVersionNoRotate(const string& read_dir, co
     //pendatic, but want to avoid re-computing it and making a mistake later.
     number_total_squares = pp.squaresX*pp.squaresY*pp.numberBoards;
 
-    // then open up all of the physical measurement files, add to square length.
+    // Per-board physical square sizes (mm). Do not overwrite pp.squareLength_mm in
+    // the loop — that left every board using the LAST file's scale.
+    vector<float> board_square_mm(pp.numberBoards, 0.f);
     for (int i = 0; i < pp.numberBoards; i++){
         if (!generate_only){
             filename = read_dir + "pattern_square_mm" + ToString<int>(i) + ".txt";
 
             returnString = FindValueOfFieldInFile(filename, "squareLength_mm", false, true);
-            pp.squareLength_mm = FromString<float>(returnString);
-
+            board_square_mm[i] = FromString<float>(returnString);
 
             filename_write = write_dir + "pattern_square_mm" + ToString<int>(i) + ".txt";
 
@@ -374,6 +375,9 @@ void PatternsCreated::ConstructCharucoVersionNoRotate(const string& read_dir, co
 
             out.close();
         }
+    }
+    if (!generate_only && pp.numberBoards > 0) {
+        pp.squareLength_mm = board_square_mm[0];
     }
 
     // convert everything to the class members.
@@ -397,7 +401,8 @@ void PatternsCreated::ConstructCharucoVersionNoRotate(const string& read_dir, co
             pattern_id_marker_indexes_to_vector.push_back(current_index);
 
             const vector<Point3f>& board_corners = CharucoChessboardCorners(boards[i]);
-            const float physical_scale = (pp.squareLength > 0) ? (pp.squareLength_mm / pp.squareLength) : 1.f;
+            const float physical_scale = (pp.squareLength > 0)
+                ? (board_square_mm[i] / pp.squareLength) : 1.f;
             for (size_t ci = 0; ci < board_corners.size(); ci++, sm++) {
                 three_d_points[sm] = board_corners[ci] * physical_scale;
             }

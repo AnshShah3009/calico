@@ -82,6 +82,13 @@ int main(int argc, char **argv){
     string ingest_intrinsics_dir = "";
     string loss_type = "trivial";
     float loss_scale = 1.0f;
+    // Track which CLI flags were explicitly passed so config cannot clobber them
+    // even when the value equals the default (e.g. --loss=trivial, --loss-scale=1.0).
+    bool cli_set_num_pattern = false;
+    bool cli_set_num_threads = false;
+    bool cli_set_loss = false;
+    bool cli_set_loss_scale = false;
+    bool cli_set_max_images = false;
 
     if (argc == 1){
         print_help = 1;
@@ -292,10 +299,12 @@ int main(int argc, char **argv){
             break;
         case 'k':
             number_points_needed_to_count_pattern  = FromString<int>(optarg);
+            cli_set_num_pattern = true;
             break;
         case 'l':
             number_threads  = FromString<int>(optarg);
             omp_set_num_threads(number_threads);
+            cli_set_num_threads = true;
             break;
         case 'm':{
             float temp = FromString<float>(optarg);
@@ -338,6 +347,7 @@ int main(int argc, char **argv){
             break;
         case 'u':
             max_images = FromString<int>(optarg);
+            cli_set_max_images = true;
             break;
         case 'v':
             focus_camera_str = optarg;
@@ -350,9 +360,11 @@ int main(int argc, char **argv){
             break;
         case 'y':
             loss_type = optarg;
+            cli_set_loss = true;
             break;
         case 'z':
             loss_scale = FromString<float>(optarg);
+            cli_set_loss_scale = true;
             break;
 
         default:{
@@ -391,6 +403,8 @@ int main(int argc, char **argv){
     string cli_exclude_camera_str = exclude_camera_str;
     string cli_focus_camera_str = focus_camera_str;
     int cli_number_threads = number_threads;
+    int cli_number_points_needed_to_count_pattern = number_points_needed_to_count_pattern;
+    int cli_max_images = max_images;
     int cli_max_internal_read = max_internal_read;
     int cli_max_internal_use = max_internal_use;
     int cli_max_external_positions = max_external_positions;
@@ -495,7 +509,9 @@ int main(int argc, char **argv){
     if (cli_camera_names_str.size()) camera_names_str = cli_camera_names_str;
     if (cli_exclude_camera_str.size()) exclude_camera_str = cli_exclude_camera_str;
     if (cli_focus_camera_str.size()) focus_camera_str = cli_focus_camera_str;
-    if (cli_number_threads != (int)omp_get_max_threads()) number_threads = cli_number_threads;
+    if (cli_set_num_threads) number_threads = cli_number_threads;
+    if (cli_set_num_pattern) number_points_needed_to_count_pattern = cli_number_points_needed_to_count_pattern;
+    if (cli_set_max_images) max_images = cli_max_images;
     if (cli_max_internal_read >= 0) max_internal_read = cli_max_internal_read;
     if (cli_max_internal_use >= 0) max_internal_use = cli_max_internal_use;
     if (cli_max_external_positions >= 0) max_external_positions = cli_max_external_positions;
@@ -508,12 +524,16 @@ int main(int argc, char **argv){
     if (cli_use_cuda) use_cuda = 1;
     // CLI always wins when the user passed a non-empty --ingest-intrinsics.
     if (!cli_ingest_intrinsics_dir.empty()) ingest_intrinsics_dir = cli_ingest_intrinsics_dir;
-    if (cli_loss_type != "trivial") loss_type = cli_loss_type;
-    if (cli_loss_scale != 1.0f) loss_scale = cli_loss_scale;
-    // Explicit --num-pattern on CLI is saved before config; restore when it differs
-    // from the default that config may have overwritten.
-    // (cli_number_threads already restored above when it differs from omp max.)
+    if (cli_set_loss) loss_type = cli_loss_type;
+    if (cli_set_loss_scale) loss_scale = cli_loss_scale;
     omp_set_num_threads(number_threads);
+
+    // --max-images is a unified cap across internal/external reads when those are unset.
+    if (max_images > 0) {
+        if (max_internal_read < 0) max_internal_read = max_images;
+        if (max_internal_use < 0) max_internal_use = max_images;
+        if (max_external_positions < 0) max_external_positions = max_images;
+    }
 
     if (loss_type != "trivial" && loss_type != "huber" && loss_type != "cauchy") {
         cerr << "Invalid --loss='" << loss_type
@@ -1245,7 +1265,14 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
     ////////////////////////////// reprojection error. ////////////////////////////////////////////
 
     int number_equations = equation_order.size();
+    if (number_equations <= 0) {
+        cerr << "No reprojection equations available for Stage 5; aborting." << endl;
+        exit(1);
+    }
     int number_equations_before_solve = int(round(percentage_global_rp*float(number_equations)));
+    if (number_equations_before_solve < 1) {
+        number_equations_before_solve = number_equations;
+    }
     int number_iters_rp = 10;
 
     CPC.SetUpXForReprojectionError(MC);

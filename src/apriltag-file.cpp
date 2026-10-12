@@ -56,9 +56,17 @@ void AprilTagObject::setTagCodes(string s) {
 
     cout << "Tag family " << s << endl;
 
-    if (tag_index == -1){
-        cout << "Invalid tag family specified. Supported: tag16h5, tag25h7, tag25h9, tag36h9, tag36h11" << endl;
+    const bool opencv_ok = AprilFamilyOpenCVDict(s) >= 0;
+    if (tag_index == -1 && !opencv_ok){
+        cout << "Invalid tag family specified. Supported: tag16h5, tag25h7, tag25h9, "
+             << "tag36h9, tag36h10 (OpenCV), tag36h11" << endl;
         exit(1);
+    }
+    if (tag_index == -1) {
+        // OpenCV-only family (e.g. tag36h10): keep default Kaess codes unused;
+        // DetectAprilTagGrid falls through to OpenCV DICT_APRILTAG_*.
+        cout << "Kaess detector has no codes for " << s
+             << "; using OpenCV AprilTag dictionary." << endl;
     }
 
     vector<string> tag_string{"tag36h11", "tag25h9", "tag16h5" };
@@ -94,8 +102,14 @@ Mat apriltag_to_image_local_black_border(apriltag_family_t *fam, int idx)
 
     uint64_t APRILTAG_U64_ONE = 1;
 
-    assert(fam != NULL);
-    assert(idx >= 0 && idx < int(fam->ncodes));
+    if (fam == NULL) {
+        CV_Error(cv::Error::StsBadArg, "apriltag family is null");
+    }
+    if (idx < 0 || idx >= int(fam->ncodes)) {
+        CV_Error(cv::Error::StsOutOfRange,
+                 "AprilTag id " + ToString(idx) + " out of range for family with "
+                 + ToString(int(fam->ncodes)) + " codes");
+    }
 
     uint64_t code = fam->codes[idx];
 
@@ -248,9 +262,11 @@ Mat RenderAprilTagMarker(const string& family, int idx, int side_px, apriltag_fa
         return marker;
     }
 #endif
-    (void)family;
-    (void)idx;
-    (void)side_px;
+    cout << "ERROR: cannot render AprilTag family '" << family
+         << "' id " << idx << " (no Kaess renderer and no OpenCV dictionary). "
+         << "Use tag36h11 / tag25h9 / tag16h5 / tag36h10 for --create-patterns; "
+         << "tag25h7 / tag36h9 are detect-only." << endl;
+    exit(1);
     return marker;
 }
 
