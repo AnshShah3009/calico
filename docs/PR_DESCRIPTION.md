@@ -1,21 +1,30 @@
-# Pull Request Description: OpenCV 5, CUDA-Assisted Calibration, Robust Optimization & Multi-Camera Verification Suite
+# Pull Request Description: OpenCV 5, CUDA-Assisted Calibration, Robust Optimization, CALICO Studio & Multi-Camera Verification Suite
 
 ## Summary
 
 This pull request modernizes **CALICO** (Camera Calibration with Incremental Ceres Optimization) for modern computer vision and robotics pipelines. It introduces:
-1. **OpenCV 5.0 Compatibility & Compatibility Shim** (`src/opencv-compat.hpp`).
-2. **CUDA-Assisted Acceleration** for both AprilTag and ChArUco target detection.
-3. **Ceres Robust Loss Functions** (Huber, Cauchy, trivial) to handle outliers and partial occlusions.
-4. **Stage 5 Checkpointing & Equation-Level Resume** (`--resume-stage=5`).
-5. **Comprehensive Ground-Truth Simulation Benchmarks** in MuJoCo for both AprilTag grids and ChArUco targets.
-6. **Python Production Tooling Suite**:
-   - Multi-format calibration exporter (`tools/export_calibration.py` -> ROS/ROS2 `CameraInfo` YAML, Nerfstudio `transforms.json`, COLMAP `cameras.txt` / `images.txt`).
-   - Multi-camera video ingestion and frame synchronization (`tools/ingest_video.py`).
-   - Interactive 3D calibration visualizer (`tools/visualize_calibration.py`).
-7. **Automated Testing & CI/CD**:
-   - CTest C++ unit test suite (12 tests covering pattern parsing, Ceres losses, math helpers, and serialization).
-   - Python test suite (`tools/test_tools.py`).
-   - GitHub Actions workflow with dual CPU and CUDA Docker builds and automated Docker Hub publishing.
+1. **Critical Bug Fix**: Fixed rotation matrix diagonal indexing in `src/solve-rotation.cpp` where diagonal elements were indexed `[i + i * 2]` instead of `[i + i * 3]`, causing skew distortion during pairwise relative rotation estimation.
+2. **OpenCV 5.0 Compatibility & Compatibility Shim** (`src/opencv-compat.hpp`).
+3. **CUDA-Assisted Acceleration** for both AprilTag and ChArUco target detection.
+4. **Ceres Robust Loss Functions** (Huber, Cauchy, trivial) to handle outliers and partial occlusions.
+5. **Stage 5 Checkpointing & Equation-Level Resume** (`--resume-stage=5`).
+6. **Pre-Flight Dataset Validator** (`tools/validate_dataset.py`) for frame synchronicity, resolution consistency, marker length constraints, and ArUco/AprilTag dictionary capacity limits.
+7. **CALICO Studio Web Application** (`tools/calico_gui.py`):
+   - Zero-dependency web UI featuring modern dark glassmorphism styling.
+   - Calibration Wizard with configuration presets (ChArUco Standard, AprilTag Grid GPU, High-Robustness Cauchy, Quick Draft).
+   - Live streaming solver terminal with progress bar, elapsed timer, copy/clear controls, and toast notifications.
+   - Integrated 3D visualizer with interactive camera inspection, baseline measurements, and "Look Through Camera" projection view.
+8. **Multi-Format Calibration Exporter** (`tools/export_calibration.py`):
+   - Standard OpenCV `cv::FileStorage` YAML (`%YAML:1.0`).
+   - ROS / ROS2 `CameraInfo` YAML.
+   - Nerfstudio `transforms.json` format for NeRF and 3D Gaussian Splatting (3DGS).
+   - COLMAP Structure-from-Motion format (`cameras.txt`, `images.txt`).
+9. **Multi-Camera Video Ingestion & Frame Extraction** (`tools/ingest_video.py`).
+10. **Ground-Truth Simulation Benchmarks** in MuJoCo for both AprilTag grids and ChArUco targets.
+11. **Automated Testing & CI/CD**:
+   - CTest C++ unit test suite (13 tests covering pattern parsing, Ceres losses, math helpers, rotation matrix identity, and serialization).
+   - Python unit test suite expanded to 18 tests (`tools/test_tools.py`), with dual AprilTag and ChArUco validation coverage.
+   - GitHub Actions CI workflow verifying Python tools compilation, unit tests, and Docker builds.
 
 ---
 
@@ -62,54 +71,80 @@ CALICO's calibration outputs were benchmarked against synthetic ground truth gen
 
 ## Detailed Changes
 
-### 1. OpenCV 5.0 Modernization & CUDA Support
+### 1. Bug Fix: Rotation Matrix Diagonal Indexing
+- In `src/solve-rotation.cpp`, the diagonal indices of the $3 \times 3$ rotation matrix in a flat row-major array were previously calculated as `i + i * 2` (indices 0, 3, 6, i.e., the first column) instead of `i + i * 3` (indices 0, 4, 8, the true diagonal).
+- This caused identity initialization and trace computations to be distorted. Corrected indexing to `i + i * 3` and added unit test `solve_rotation_diagonal_identity` in `src/tests/test_solve_rotation.cpp`.
+
+### 2. OpenCV 5.0 Modernization & CUDA Support
 - Added `src/opencv-compat.hpp` to bridge API differences between OpenCV 3/4 and OpenCV 5 (`cv::aruco::CharucoBoard`, `cv::aruco::CharucoDetector`, detector parameters).
 - Added `src/apriltag_cuda.cu` and `src/cuda-detect.cpp` providing GPU-assisted preprocessing and detection paths with automatic CPU fallback when CUDA runtime or devices are unavailable.
 - Updated `src/camera-calibration.cpp` to correctly preserve ingested intrinsic matrices ($K$) when running calibration on OpenCV 5.
 
-### 2. Optimization Robustness & Checkpointing
+### 3. Optimization Robustness & Checkpointing
 - Integrated Ceres robust loss functions: `--loss=[trivial|huber|cauchy]` and `--loss-scale=[FLOAT]`, also configurable via YAML.
 - Implemented equation-level checkpointing for Stage 5 Ceres optimization (`checkpoint_stage5.txt`) and resume capabilities (`--resume-stage=5`).
 
-### 3. Python Production Tooling Suite
-- **`tools/export_calibration.py`**:
-  - ROS / ROS2 `CameraInfo` YAML (Plumb Bob / rational polynomial models).
-  - Nerfstudio `transforms.json` format.
-  - COLMAP reconstruction format (`cameras.txt`, `images.txt`).
-- **`tools/ingest_video.py`**:
-  - Synchronous multi-camera video ingestion, timestamp alignment, and automated CALICO directory preparation.
-- **`tools/visualize_calibration.py`**:
-  - Interactive WebGL/HTML 3D visualizer showing frustums, target boards, reprojection vectors, and error heatmaps.
+### 4. CALICO Studio Web GUI (`tools/calico_gui.py`)
+- Zero-dependency web UI built with Python's standard library `http.server` and modern JavaScript/Three.js.
+- Clean glassmorphism interface with dark theme, real-time calibration monitoring, and toast notifications.
+- 4 primary tabs: **Calibration Wizard**, **Pre-Flight Check**, **3D Visualizer & Inspector**, and **Export Hub**.
 
-### 4. Testing & CI/CD
+### 5. Pre-Flight Dataset Validator (`tools/validate_dataset.py`)
+- Validates multi-camera dataset integrity before launching heavy calibration:
+  - Verifies synchronized frame counts across cameras.
+  - Checks uniform image resolution across all camera feeds.
+  - Checks pattern geometry and marker length bounds (`markerLength < squareLength`).
+  - Verifies total board markers do not exceed dictionary capacity (supporting both ArUco and AprilTag families).
+
+### 6. Multi-Format Calibration Exporter (`tools/export_calibration.py`)
+- Standard OpenCV `cv::FileStorage` YAML format (`%YAML:1.0`).
+- ROS / ROS2 `CameraInfo` YAML (Plumb Bob / rational polynomial models).
+- Nerfstudio `transforms.json` format for NeRF and Gaussian Splatting.
+- COLMAP reconstruction format (`cameras.txt`, `images.txt`).
+
+### 7. Multi-Camera Ingestion Tool (`tools/ingest_video.py`)
+- Synchronous multi-camera video ingestion, timestamp alignment, and automated CALICO directory preparation.
+
+### 8. Testing & CI/CD
 - **C++ CTest Suite** (`src/tests/`):
-  - 12 unit tests validating pattern parameter loading, ArUco dictionary size mapping, string sanitization, Ceres loss constructors, and equation serialization.
+  - 13 unit tests validating pattern parameter loading, ArUco dictionary size mapping, string sanitization, Ceres loss constructors, rotation matrix diagonal indexing, and equation serialization.
 - **Python Test Suite** (`tools/test_tools.py`):
-  - Automated tests covering video ingestion, multi-format export, and visualizer generation.
+  - 18 unit tests covering video ingestion, multi-format export, dataset pre-flight validation (both AprilTag and ChArUco), and visualizer generation. All tests execute in < 2 seconds.
 - **Docker & CI/CD**:
   - Dual `Dockerfile.cpu` and `Dockerfile.cuda` definitions.
-  - Automated GitHub Actions workflow (`.github/workflows/ci.yml`) building, testing, and publishing images to Docker Hub on release tags or workflow dispatch.
-  - Helper script `tools/push_docker.sh` for manual image publishing.
+  - GitHub Actions workflow (`.github/workflows/ci.yml`) for Python syntax/lint checks, test suite execution, and Docker container verification.
 
 ---
 
 ## How to Test
 
-### 1. Run CTest Suite (Inside Docker)
-```bash
-docker compose run --rm calico-cpu ctest --test-dir /calico/src/build --output-on-failure
-```
-
-### 2. Run Python Tooling Tests
+### 1. Run Python Unit Test Suite
 ```bash
 python3 tools/test_tools.py
 ```
 
-### 3. Run MuJoCo Ground-Truth Verification
+### 2. Launch CALICO Studio
 ```bash
-# AprilTag grid verification
-MUJOCO_GL=osmesa python3 sim/verify_mujoco_april.py
+python3 tools/calico_gui.py --port 8080
+# Open http://localhost:8080 in your browser
+```
 
-# ChArUco grid verification with CUDA
-MUJOCO_GL=osmesa python3 sim/verify_mujoco_charuco.py --use-cuda
+### 3. Run Pre-Flight Validation
+```bash
+# Validate ChArUco dataset
+python3 tools/validate_dataset.py DATA/mult-3-base
+
+# Validate AprilTag grid dataset
+python3 tools/validate_dataset.py results/april-in
+```
+
+### 4. Run Multi-Format Export
+```bash
+# Export to OpenCV FileStorage, ROS, Nerfstudio, and COLMAP
+python3 tools/export_calibration.py results/run5 --format all -o exports/run5_all
+```
+
+### 5. Run CTest Suite (Inside Docker)
+```bash
+docker compose run --rm calico-cpu ctest --test-dir /calico/src/build --output-on-failure
 ```
