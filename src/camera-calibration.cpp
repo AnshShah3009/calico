@@ -690,23 +690,23 @@ void CameraCali::CalibrateBasic(float initial_focal_px, int zero_tangent_dist,
             exit(1);
         }
         // CALIB_FIX_INTRINSIC is a stereoCalibrate flag; pin K/dist explicitly.
-        // Use FIX_TANGENT_DIST (keep p1/p2) — ZERO_TANGENT_DIST would zero ingested tangentials.
+        // Use FIX_TANGENT_DIST (keep p1/p2) — do NOT set ZERO_TANGENT_DIST which would wipe tangential distortion.
         flags = flags | cv::CALIB_FIX_PRINCIPAL_POINT | cv::CALIB_FIX_FOCAL_LENGTH
                 | cv::CALIB_FIX_ASPECT_RATIO | cv::CALIB_FIX_K1 | cv::CALIB_FIX_K2
                 | cv::CALIB_FIX_K3 | cv::CALIB_FIX_TANGENT_DIST;
         cout << "Holding loaded intrinsics fixed while estimating board poses." << endl;
-    }
+    } else {
+        if (zero_k3){
+            flags = flags |  cv::CALIB_FIX_K3;
+        }
 
-    if (zero_k3){
-        flags = flags |  cv::CALIB_FIX_K3;
-    }
+        if (fix_principal_point){
+            flags = flags | cv::CALIB_FIX_PRINCIPAL_POINT;
+        }
 
-    if (fix_principal_point){
-        flags = flags | cv::CALIB_FIX_PRINCIPAL_POINT;
-    }
-
-    if (zero_tangent_dist){
-        flags = flags | cv::CALIB_ZERO_TANGENT_DIST;
+        if (zero_tangent_dist){
+            flags = flags | cv::CALIB_ZERO_TANGENT_DIST;
+        }
     }
 
     rms = cv::calibrateCamera(threed_points_wo_blanks, twod_points_wo_blanks, image_size, cameraMatrix, distCoeffs, rvecs, tvecs, flags);
@@ -715,16 +715,27 @@ void CameraCali::CalibrateBasic(float initial_focal_px, int zero_tangent_dist,
 
     /// write calibration details now.  Also, transfer to the Eigen format.
 
-    for (int i = 0; i < 3; i++){
-        for (int j = 0; j < 3; j++){
-            internal_parameters(i, j) = cameraMatrix.at<double>(i, j);
+    if (!ingest_intrinsics_file.empty()) {
+        // Guarantee bit-exact preservation of ingested intrinsics and distortion parameters
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                cameraMatrix.at<double>(i, j) = internal_parameters(i, j);
+            }
         }
-    }
+        for (int i = 0; i < distortion.rows(); i++) {
+            distCoeffs.at<double>(i, 0) = distortion(i);
+        }
+    } else {
+        for (int i = 0; i < 3; i++){
+            for (int j = 0; j < 3; j++){
+                internal_parameters(i, j) = cameraMatrix.at<double>(i, j);
+            }
+        }
 
-    distortion.resize(distCoeffs.rows);
-    for (int i = 0; i < distCoeffs.rows; i++){
-        distortion(i) = distCoeffs.at<double>(i, 0);
-
+        distortion.resize(distCoeffs.rows);
+        for (int i = 0; i < distCoeffs.rows; i++){
+            distortion(i) = distCoeffs.at<double>(i, 0);
+        }
     }
 
     cout << "distortion " << distortion << endl;

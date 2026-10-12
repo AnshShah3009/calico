@@ -644,6 +644,47 @@ class TestCharucoCudaAndCalibrationVerification(unittest.TestCase):
         self.assertEqual(len(corners), expected_corners)
         self.assertEqual(len(ids), expected_corners)
 
+    def test_ingest_intrinsics_preserves_tangential_distortion(self):
+        """Verify that ingested intrinsics with non-zero tangential distortion (p1, p2) are preserved."""
+        K_orig = np.array([[820.5, 0.0, 481.2], [0.0, 819.8, 359.7], [0.0, 0.0, 1.0]], dtype=np.float64)
+        dist_orig = np.array([-0.12, 0.04, 0.0025, -0.0018, 0.0], dtype=np.float64)
+
+        board_img = self.board.generateImage((700, 500), marginSize=20)
+        detector = cv2.aruco.CharucoDetector(self.board)
+        corners, ids, _, _ = detector.detectBoard(board_img)
+        obj_pts, _ = self.board.matchImagePoints(corners, ids)
+
+        rvec = np.array([0.05, -0.08, 0.02], dtype=np.float64)
+        tvec = np.array([0.01, -0.02, 0.75], dtype=np.float64)
+        img_pts, _ = cv2.projectPoints(obj_pts, rvec, tvec, K_orig, dist_orig)
+
+        K_calib = K_orig.copy()
+        dist_calib = dist_orig.copy()
+        flags = (
+            cv2.CALIB_USE_INTRINSIC_GUESS
+            | cv2.CALIB_FIX_PRINCIPAL_POINT
+            | cv2.CALIB_FIX_FOCAL_LENGTH
+            | cv2.CALIB_FIX_ASPECT_RATIO
+            | cv2.CALIB_FIX_K1
+            | cv2.CALIB_FIX_K2
+            | cv2.CALIB_FIX_K3
+            | cv2.CALIB_FIX_TANGENT_DIST
+        )
+
+        rms, K_out, dist_out, _, _ = cv2.calibrateCamera(
+            [obj_pts.astype(np.float32)],
+            [img_pts.astype(np.float32)],
+            (700, 500),
+            K_calib,
+            dist_calib,
+            flags=flags,
+        )
+
+        np.testing.assert_allclose(K_out, K_orig, atol=1e-5)
+        np.testing.assert_allclose(dist_out.flatten()[:4], dist_orig[:4], atol=1e-5)
+        self.assertNotEqual(dist_out.flatten()[2], 0.0, 'p1 should not be zeroed out')
+        self.assertNotEqual(dist_out.flatten()[3], 0.0, 'p2 should not be zeroed out')
+
 
 if __name__ == "__main__":
     unittest.main()
