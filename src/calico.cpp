@@ -234,7 +234,7 @@ int main(int argc, char **argv){
             cout << "All other arguments are ignored." << endl;
             cout << endl << endl;
 
-            exit(1);
+            exit(0);
         }
 
         int option_index = 0;
