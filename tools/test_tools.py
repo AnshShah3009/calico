@@ -353,6 +353,64 @@ arcCode: 0
         self.assertFalse(res["valid"])
         self.assertTrue(any("pattern_square_mm0.txt" in e for e in res["errors"]))
 
+    def test_valid_april_dataset(self):
+        from validate_dataset import validate_dataset
+        april_yaml = """%YAML:1.0
+type: april
+squaresX: 6
+squaresY: 6
+squareLength: 80
+margins: 20
+tagSpace: 16
+numberBoards: 2
+april_family: tag36h11
+"""
+        (self.root / "network_specification_file.yaml").write_text(april_yaml)
+        (self.root / "pattern_square_mm0.txt").write_text("squareLength_mm 40.0\n")
+        (self.root / "pattern_square_mm1.txt").write_text("squareLength_mm 40.0\n")
+        res = validate_dataset(self.root)
+        self.assertTrue(res["valid"])
+        self.assertEqual(res["summary"]["pattern"]["type"], "april")
+        self.assertEqual(res["summary"]["pattern"]["april_family"], "tag36h11")
+
+    def test_april_dictionary_overflow(self):
+        from validate_dataset import validate_dataset
+        # tag16h5 has capacity 30; 6x6 grid has 36 tags per board -> overflow!
+        bad_april_yaml = """%YAML:1.0
+type: april
+squaresX: 6
+squaresY: 6
+squareLength: 80
+margins: 20
+numberBoards: 1
+april_family: tag16h5
+"""
+        (self.root / "network_specification_file.yaml").write_text(bad_april_yaml)
+        (self.root / "pattern_square_mm0.txt").write_text("squareLength_mm 40.0\n")
+        res = validate_dataset(self.root)
+        self.assertFalse(res["valid"])
+        self.assertTrue(any("overflow" in e.lower() for e in res["errors"]))
+
+    def test_real_repo_charuco_and_april_datasets(self):
+        from validate_dataset import validate_dataset
+        repo_root = Path(__file__).resolve().parent.parent
+
+        # 1. Test real ChArUco dataset
+        charuco_dir = repo_root / "DATA" / "mult-3-base"
+        if charuco_dir.exists():
+            res_c = validate_dataset(charuco_dir)
+            self.assertTrue(res_c["valid"])
+            self.assertEqual(res_c["summary"]["pattern"]["type"], "charuco")
+            self.assertEqual(len(res_c["summary"]["cameras"]), 4)
+
+        # 2. Test real AprilTag grid dataset
+        april_dir = repo_root / "results" / "april-in"
+        if april_dir.exists():
+            res_a = validate_dataset(april_dir)
+            self.assertTrue(res_a["valid"])
+            self.assertEqual(res_a["summary"]["pattern"]["type"], "april")
+            self.assertEqual(len(res_a["summary"]["cameras"]), 2)
+
 class TestCalicoGUI(unittest.TestCase):
     def setUp(self):
         self.tmp_dir = tempfile.TemporaryDirectory()
@@ -476,3 +534,32 @@ class TestCalicoGUI(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+    def test_export_real_april_and_charuco(self):
+        repo_root = Path(__file__).resolve().parent.parent
+        script = Path(__file__).resolve().parent / "export_calibration.py"
+
+        # 1. Test AprilTag grid calibration export (results/april-gpu)
+        april_cali = repo_root / "results" / "april-gpu"
+        if april_cali.exists() and (april_cali / "calibration.json").exists():
+            out_april = self.root / "export_april"
+            subprocess.check_call([
+                sys.executable, str(script), str(april_cali), "--format", "all", "-o", str(out_april)
+            ])
+            self.assertTrue((out_april / "ros" / "cam0_camera_info.yaml").exists())
+            self.assertTrue((out_april / "nerfstudio" / "transforms.json").exists())
+            self.assertTrue((out_april / "colmap" / "cameras.txt").exists())
+            self.assertTrue((out_april / "opencv" / "cam0_opencv.yaml").exists())
+
+        # 2. Test ChArUco calibration export (results/run5)
+        charuco_cali = repo_root / "results" / "run5"
+        if charuco_cali.exists() and (charuco_cali / "calibration.json").exists():
+            out_charuco = self.root / "export_charuco"
+            subprocess.check_call([
+                sys.executable, str(script), str(charuco_cali), "--format", "all", "-o", str(out_charuco)
+            ])
+            self.assertTrue((out_charuco / "ros" / "111F816F_camera_info.yaml").exists())
+            self.assertTrue((out_charuco / "nerfstudio" / "transforms.json").exists())
+            self.assertTrue((out_charuco / "colmap" / "cameras.txt").exists())
+            self.assertTrue((out_charuco / "opencv" / "111F816F_opencv.yaml").exists())
+
+
