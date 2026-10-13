@@ -115,8 +115,8 @@ Both CPU and GPU-accelerated Docker images are supported:
 
 | Image Flavor | Docker Tag | Hardware Requirements |
 | :--- | :--- | :--- |
-| **CPU** | `<username>/calico:cpu` (or `:latest`) | x86_64 CPU |
-| **CUDA (GPU)** | `<username>/calico:cuda` | NVIDIA GPU + NVIDIA Container Toolkit |
+| **CPU** | `<username>/calico:cpu`, `:cpu-latest`, or `:latest` | x86_64 CPU |
+| **CUDA (GPU)** | `<username>/calico:cuda` or `:cuda-latest` | NVIDIA GPU + NVIDIA Container Toolkit |
 
 #### Automated CI/CD Publishing to Docker Hub
 To automatically build and push both images on releases and pushes to `main`:

@@ -117,8 +117,9 @@ jobs:
         if: steps.check_creds.outputs.configured == 'true'
         run: |
           DOCKER_USER="${{ secrets.DOCKERHUB_USERNAME }}"
-          CPU_TAGS="${DOCKER_USER}/calico:cpu\n${DOCKER_USER}/calico:latest"
-          CUDA_TAGS="${DOCKER_USER}/calico:cuda"
+          # Stable channel tags: cpu / cuda, plus explicit *-latest, and :latest == CPU.
+          CPU_TAGS="${DOCKER_USER}/calico:cpu\n${DOCKER_USER}/calico:cpu-latest\n${DOCKER_USER}/calico:latest"
+          CUDA_TAGS="${DOCKER_USER}/calico:cuda\n${DOCKER_USER}/calico:cuda-latest"
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             TAG_NAME="${{ github.ref_name }}"
             CPU_TAGS="${CPU_TAGS}\n${DOCKER_USER}/calico:${TAG_NAME}\n${DOCKER_USER}/calico:${TAG_NAME}-cpu"
