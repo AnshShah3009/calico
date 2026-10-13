@@ -370,7 +370,10 @@ It is suggested that you generate aruco patterns to use in your own calibrations
 As mentioned in [Run the image](#run-the-image), you start the Docker container from the command line, and then issue commands similar to above.  So, start the container running, 
 
 ````bash
-sudo docker run -v /home/amy/Data/March/:/docker_dir -it amytabb/calico-dec2023:latest bash
+# CPU:
+docker run --rm -it -v /home/amy/Data/March/:/docker_dir --entrypoint bash anshshah3009/calico:cpu-latest
+# CUDA / GPU:
+# docker run --rm -it --gpus all -v /home/amy/Data/March/:/docker_dir --entrypoint bash anshshah3009/calico:cuda-latest
 ````
 
 And this will start the container.  Suppose we forgot to create a directory for the results. 
