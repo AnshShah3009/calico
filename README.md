@@ -111,12 +111,15 @@ If you use this code in project that results in a publication, please cite at a 
 
 ### Pre-built Docker Images (CPU & GPU/CUDA)
 
-Both CPU and GPU-accelerated Docker images are supported:
+Published images: [anshshah3009/calico](https://hub.docker.com/r/anshshah3009/calico/tags)
 
-| Image Flavor | Docker Tag | Hardware Requirements |
-| :--- | :--- | :--- |
-| **CPU** | `<username>/calico:cpu`, `:cpu-latest`, or `:latest` | x86_64 CPU |
-| **CUDA (GPU)** | `<username>/calico:cuda` or `:cuda-latest` | NVIDIA GPU + NVIDIA Container Toolkit |
+| Flavor | Tags (**which image you get**) | Approx. size | Hardware |
+| :--- | :--- | ---: | :--- |
+| **CPU** (no GPU) | `anshshah3009/calico:cpu`<br>`anshshah3009/calico:cpu-latest`<br>`anshshah3009/calico:latest` *(alias of CPU)* | ~138 MB | x86_64 CPU |
+| **CUDA** (GPU) | `anshshah3009/calico:cuda`<br>`anshshah3009/calico:cuda-latest` | ~3.2 GB | NVIDIA GPU + [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) |
+
+- **CPU** tags — `cpu`, `cpu-latest`, and `latest` are the **same CPU image** (OpenCV 5 + Ceres, CPU detect/solve).
+- **CUDA** tags — `cuda` and `cuda-latest` are the **GPU image**. Do **not** pull `:latest` if you want CUDA.
 
 #### Automated CI/CD Publishing to Docker Hub
 To automatically build and push both images on releases and pushes to `main`:
@@ -124,7 +127,9 @@ To automatically build and push both images on releases and pushes to `main`:
 2. Add the following repository secrets:
    - `DOCKERHUB_USERNAME`: Your Docker Hub username.
    - `DOCKERHUB_TOKEN`: A Docker Hub Personal Access Token (PAT) with `Read & Write` permissions.
-3. Once configured, GitHub Actions will automatically build, tag, and publish both `calico:cpu` and `calico:cuda` images on release tags or manual workflow dispatch.
+3. Once configured, GitHub Actions publishes:
+   - **CPU** → `:cpu`, `:cpu-latest`, `:latest`
+   - **CUDA** → `:cuda`, `:cuda-latest`
 
 #### Manual Push
 Alternatively, you can build and push both images from your terminal using:
@@ -134,42 +139,56 @@ Alternatively, you can build and push both images from your terminal using:
 
 ### Pull the image
 
-The image for CALICO is : [amytabb/calico-dec2023](https://hub.docker.com/r/amytabb/calico-dec2023).
-
+**CPU** (any of these tags is the CPU image):
 ```bash
-docker pull amytabb/calico-dec2023:mar2024
+docker pull anshshah3009/calico:cpu-latest
+# or: docker pull anshshah3009/calico:cpu
+# or: docker pull anshshah3009/calico:latest
 ```
+
+**CUDA / GPU** (these tags are the CUDA image):
+```bash
+docker pull anshshah3009/calico:cuda-latest
+# or: docker pull anshshah3009/calico:cuda
+```
+
+Legacy Amy Tabb image: [amytabb/calico-dec2023](https://hub.docker.com/r/amytabb/calico-dec2023).
 
 ### Run the image
 
-CALICO needs to read and write results to disk; to do so with Docker means that we need to mount a portion of your hard drive to a volume in the Docker image.
+CALICO needs to read and write results to disk; bind-mount a host directory to `/docker_dir` in the container.
 
-I used a bind mount below; the Docker image's volume is `docker_dir` and will not change no matter which machine or dataset you run it on.  `/full/file/path/on/your/machine` is the directory that you want the reading and writing to occur.  
-
-Example:
-
+**CPU example:**
 ```bash
-sudo docker run -v /full/file/path/on/your/machine:/docker_dir -it amytabb/calico:latest bash
+docker run --rm -it -v /full/file/path/on/your/machine:/docker_dir \
+  --entrypoint bash anshshah3009/calico:cpu-latest
 ```
 
-The bind mount is potentially confusing, so here is an example.  Say I have a directory `/home/amy/Data/March/` and within `March` is a directory of images that I want to process with CALICO.  I also want to write to a directory within `/home/amy/Data/March/`.  So, 
-
+**CUDA example** (requires NVIDIA Container Toolkit):
 ```bash
-sudo docker run -v /home/amy/Data/March:/docker_dir -it amytabb/calico:latest bash
+docker run --rm -it --gpus all -v /full/file/path/on/your/machine:/docker_dir \
+  --entrypoint bash anshshah3009/calico:cuda-latest
 ```
 
-Creates a container with all of the libraries and a Ubuntu 18.04 operating system, and bash shell (command line), and may look something like:
+The bind mount is potentially confusing, so here is an example.  Say I have a directory `/home/amy/Data/March/` and within `March` is a directory of images that I want to process with CALICO.  I also want to write to a directory within `/home/amy/Data/March/`.  So,
+
+```bash
+docker run --rm -it -v /home/amy/Data/March:/docker_dir \
+  --entrypoint bash anshshah3009/calico:cpu-latest
+```
+
+Creates a container with all of the libraries and a bash shell (command line), and may look something like:
 
 ```bash
 root@f6feb7ce8c31:/docker_dir# 
 ```
 
-but if you take a look at the contents of `/host_dir`, with `ls`, they are `/home/amy/Data/March/`.  That's the bind mount magic.
+but if you take a look at the contents of `/docker_dir`, with `ls`, they are `/home/amy/Data/March/`.  That's the bind mount magic.
 
 First, suppose we forgot to create the write directory.  No problem.
 
 ```bash
-root@f6feb7ce8c31:/host_dir# mkdir write-dir
+root@f6feb7ce8c31:/docker_dir# mkdir write-dir
 ```
 
 creates our write directory `write-dir`.
