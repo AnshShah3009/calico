@@ -20,6 +20,11 @@ bool readAprilTagSpecificationFile(string filename, patternParameters &params) {
     fs["tagSpace"] >> params.tagSpace;
     fs["numberBoards"] >> params.numberBoards;
     fs["april_family"] >> params.april_family;
+    if (params.april_family.empty()) {
+        params.april_family = "tag36h11";
+    }
+    params.april_family = NormalizeAprilFamily(params.april_family);
+    params.type = april;
     return true;
 }
 
@@ -28,7 +33,7 @@ bool readCharucoSpecificationFile(string filename, patternParameters &params) {
     FileStorage fs(filename, FileStorage::READ);
     if(!fs.isOpened())
         return false;
-   // fs["type"] >> params.type;
+    params.type = charuco;
     fs["squaresX"] >> params.squaresX;
     fs["squaresY"] >> params.squaresY;
     fs["squareLength"] >> params.squareLength;
@@ -63,8 +68,30 @@ int GetArucoDictionarySize(int arc_code) {
         case 18: return 35;  // DICT_APRILTAG_25h9
         case 19: return 2320;// DICT_APRILTAG_36h10
         case 20: return 587; // DICT_APRILTAG_36h11
+        case 21: return 250; // DICT_ARUCO_MIP_36h12
         default: return -1;
     }
+}
+
+bool readArucoGridSpecificationFile(string filename, patternParameters &params) {
+    FileStorage fs(filename, FileStorage::READ);
+    if(!fs.isOpened())
+        return false;
+    fs["squaresX"] >> params.squaresX;
+    fs["squaresY"] >> params.squaresY;
+    fs["squareLength"] >> params.squareLength;
+    fs["margins"] >> params.margins;
+    fs["tagSpace"] >> params.tagSpace;
+    fs["numberBoards"] >> params.numberBoards;
+    fs["arcCode"] >> params.arc_code;
+    // Optional markerLength (defaults to squareLength for solid ArUco tiles).
+    if (!fs["markerLength"].empty()) {
+        fs["markerLength"] >> params.markerLength;
+    } else {
+        params.markerLength = params.squareLength;
+    }
+    params.type = arucop;
+    return true;
 }
 
 bool ValidatePatternParams(const patternParameters& pp, const string& spec_file) {
@@ -94,11 +121,47 @@ bool ValidatePatternParams(const patternParameters& pp, const string& spec_file)
 
     if (pp.type == charuco) {
         int dict_size = GetArucoDictionarySize(pp.arc_code);
-        int needed_markers = pp.squaresX * pp.squaresY * pp.numberBoards;
+        // ChArUco places markers on white squares only (~half the chessboard cells).
+        int needed_markers = ((pp.squaresX * pp.squaresY + 1) / 2) * pp.numberBoards;
         if (dict_size > 0 && needed_markers > dict_size) {
             cerr << "ERROR: need " << needed_markers << " markers but aruco dictionary "
                  << pp.arc_code << " only has " << dict_size
                  << " markers in " << spec_file << endl;
+            ok = false;
+        }
+    }
+
+    if (pp.type == april) {
+        const int dict_size = AprilFamilyCapacity(pp.april_family);
+        const int needed = pp.squaresX * pp.squaresY * pp.numberBoards;
+        if (dict_size > 0 && needed > dict_size) {
+            cerr << "ERROR: AprilTag grid needs " << needed << " tags but family "
+                 << pp.april_family << " only has " << dict_size
+                 << " in " << spec_file << endl;
+            ok = false;
+        }
+        if (pp.tagSpace < 0) {
+            cerr << "ERROR: tagSpace must be >= 0 in " << spec_file << endl;
+            ok = false;
+        }
+    }
+
+    if (pp.type == arucop) {
+        const int dict_size = GetArucoDictionarySize(pp.arc_code);
+        const int needed = pp.squaresX * pp.squaresY * pp.numberBoards;
+        if (dict_size > 0 && needed > dict_size) {
+            cerr << "ERROR: ArUco grid needs " << needed << " markers but dictionary "
+                 << pp.arc_code << " only has " << dict_size
+                 << " in " << spec_file << endl;
+            ok = false;
+        }
+        if (pp.tagSpace < 0) {
+            cerr << "ERROR: tagSpace must be >= 0 in " << spec_file << endl;
+            ok = false;
+        }
+        if (GetArucoDictionarySize(pp.arc_code) < 0) {
+            cerr << "ERROR: unsupported arcCode " << pp.arc_code
+                 << " in " << spec_file << endl;
             ok = false;
         }
     }

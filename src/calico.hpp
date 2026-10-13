@@ -28,6 +28,10 @@ struct CalicoOptions {
     vector<string> camera_names_override;
     vector<string> exclude_cameras;
     vector<string> focus_cameras;
+    bool use_cuda = false;
+    string ingest_intrinsics_dir = "";
+    string loss_type = "trivial";
+    float loss_scale = 1.0f;
 };
 
 void PrintDetectionSummary(const vector<CameraCali*>& CCV,
@@ -35,7 +39,7 @@ void PrintDetectionSummary(const vector<CameraCali*>& CCV,
         int number_patterns);
 
 void CreatePatterns(const string& input_dir, const string& output_dir,
-        const string& src_file, bool is_charuco);
+        const string& src_file, bool is_charuco, bool is_april, bool is_aruco);
 
 void MultipleCameraCalibration(const string& input_dir, const string& output_dir,
         const string& src_file, float camera_size, float track_size,  float initial_focal_px,
@@ -44,8 +48,8 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
         int max_internal_read, int max_internal_use, int max_external_positions, int selectedk,
         int number_points_needed_to_count_pattern, int synchronized_rotating_option, float percentage_global_alg,
         float percentage_global_rp,
-        const bool is_charuco, const bool is_april, const bool interleavedSolve,
+        const bool is_charuco, const bool is_april, const bool is_aruco, const bool interleavedSolve,
         const CalicoOptions& options = CalicoOptions());
 
 void DryRunValidation(const string& input_dir, const string& output_dir,
-        const string& src_file, bool is_charuco);
+        const string& src_file, bool is_charuco, bool is_april, bool is_aruco);

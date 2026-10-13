@@ -50,9 +50,10 @@ public:
 	vector<int> internal_pattern_indices;
 
 	bool no_debug_images = false;
+	bool use_cuda = false;
 
 	CameraCali(const string& read_dir, PatternsCreated* P, int max_ext_images,
-	        int max_int_images_read, int max_int_images_use);
+	        int max_int_images_read, int max_int_images_use, bool use_cuda_flag = false);
 
 	~CameraCali();
 
@@ -65,7 +66,10 @@ public:
 	void SetUpSelectPointsForMinimization();
 
 	void CalibrateBasic(float initial_focal_px, int zero_tangent_dist, int zero_k3, int fix_principal_point,
-			const string& write_dir, int number_points_needed_to_count, bool write_internal_images = false);
+			const string& write_dir, int number_points_needed_to_count, bool write_internal_images = false,
+			const string& ingest_intrinsics_file = "");
+
+	bool LoadIntrinsics(const string& filename);
 
 	double ComputeReprojectionErrorOneImagePattern(const Matrix4d& ExtParameters, int image_number,
 			int pattern_number,  const string& write_directory, bool write, int equation_number,

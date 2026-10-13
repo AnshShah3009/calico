@@ -1,0 +1,10 @@
+%YAML:1.0
+# Variant: tag25h9 5x5
+type: april
+squaresX: 5
+squaresY: 5
+squareLength: 80
+margins: 20
+tagSpace: 16
+numberBoards: 2
+april_family: tag25h9

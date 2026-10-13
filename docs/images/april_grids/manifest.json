@@ -1,0 +1,128 @@
+[
+  {
+    "family": "tag36h11",
+    "grid": "6x6",
+    "tags": 36,
+    "detected": 36,
+    "ok": true,
+    "label": "tag36h11 6\u00d76 (default)",
+    "board": "tag36h11_6x6.png",
+    "detect": "tag36h11_6x6_detect.png",
+    "size_px": [
+      600,
+      600
+    ]
+  },
+  {
+    "family": "tag36h11",
+    "grid": "4x3",
+    "tags": 12,
+    "detected": 12,
+    "ok": true,
+    "label": "tag36h11 4\u00d73 (sparse)",
+    "board": "tag36h11_4x3.png",
+    "detect": "tag36h11_4x3_detect.png",
+    "size_px": [
+      508,
+      388
+    ]
+  },
+  {
+    "family": "tag36h11",
+    "grid": "8x6",
+    "tags": 48,
+    "detected": 48,
+    "ok": true,
+    "label": "tag36h11 8\u00d76 (dense)",
+    "board": "tag36h11_8x6.png",
+    "detect": "tag36h11_8x6_detect.png",
+    "size_px": [
+      628,
+      476
+    ]
+  },
+  {
+    "family": "tag25h9",
+    "grid": "5x5",
+    "tags": 25,
+    "detected": 25,
+    "ok": true,
+    "label": "tag25h9 5\u00d75",
+    "board": "tag25h9_5x5.png",
+    "detect": "tag25h9_5x5_detect.png",
+    "size_px": [
+      504,
+      504
+    ]
+  },
+  {
+    "family": "tag25h9",
+    "grid": "7x5",
+    "tags": 35,
+    "detected": 35,
+    "ok": true,
+    "label": "tag25h9 7\u00d75",
+    "board": "tag25h9_7x5.png",
+    "detect": "tag25h9_7x5_detect.png",
+    "size_px": [
+      624,
+      452
+    ]
+  },
+  {
+    "family": "tag16h5",
+    "grid": "5x5",
+    "tags": 25,
+    "detected": 25,
+    "ok": true,
+    "label": "tag16h5 5\u00d75",
+    "board": "tag16h5_5x5.png",
+    "detect": "tag16h5_5x5_detect.png",
+    "size_px": [
+      504,
+      504
+    ]
+  },
+  {
+    "family": "tag16h5",
+    "grid": "6x5",
+    "tags": 30,
+    "detected": 30,
+    "ok": true,
+    "label": "tag16h5 6\u00d75",
+    "board": "tag16h5_6x5.png",
+    "detect": "tag16h5_6x5_detect.png",
+    "size_px": [
+      538,
+      452
+    ]
+  },
+  {
+    "family": "tag36h10",
+    "grid": "6x6",
+    "tags": 36,
+    "detected": 36,
+    "ok": true,
+    "label": "tag36h10 6\u00d76",
+    "board": "tag36h10_6x6.png",
+    "detect": "tag36h10_6x6_detect.png",
+    "size_px": [
+      600,
+      600
+    ]
+  },
+  {
+    "family": "tag36h10",
+    "grid": "10x8",
+    "tags": 80,
+    "detected": 80,
+    "ok": true,
+    "label": "tag36h10 10\u00d78",
+    "board": "tag36h10_10x8.png",
+    "detect": "tag36h10_10x8_detect.png",
+    "size_px": [
+      602,
+      486
+    ]
+  }
+]

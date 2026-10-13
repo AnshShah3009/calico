@@ -17,6 +17,14 @@ bool readDetectorParameters(const string& filename, Ptr<aruco::DetectorParameter
         return false;
     }
 
+#if CALICO_ARUCO_MODERN
+    // Keep OpenCV defaults for any keys the YAML omits (legacy files used
+    // minCornerDistance / minMarkerDistance instead of the Rate fields).
+    if (params->readDetectorParameters(fs.root())) {
+        return true;
+    }
+#endif
+
     fs["adaptiveThreshWinSizeMin"] >> params->adaptiveThreshWinSizeMin;
     fs["adaptiveThreshWinSizeMax"] >> params->adaptiveThreshWinSizeMax;
     fs["adaptiveThreshWinSizeStep"] >> params->adaptiveThreshWinSizeStep;

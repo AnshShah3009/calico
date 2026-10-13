@@ -1,0 +1,28 @@
+services:
+  calico-cpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.cpu
+    image: calico:cpu
+    volumes:
+      - ./DATA:/docker_dir/DATA
+      - ./results:/docker_dir/results
+      - ./configs:/docker_dir/configs
+    working_dir: /docker_dir
+    command: ["--help"]
+
+  calico-cuda:
+    build:
+      context: .
+      dockerfile: Dockerfile.cuda
+    image: calico:cuda
+    runtime: nvidia
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      - ./DATA:/docker_dir/DATA
+      - ./results:/docker_dir/results
+      - ./configs:/docker_dir/configs
+    working_dir: /docker_dir
+    command: ["--help"]

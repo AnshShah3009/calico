@@ -1,15 +1,12 @@
 # calico
 
 > [!NOTE]
-> **Ansh Shah's Fork**: Enhanced with 21 Quality-of-Life (QoL) flags, structured JSON export (`calibration.json`), solver checkpointing, and execution validation.
->
-> 🚀 **OpenCV 5.0, CUDA Acceleration & CI/CD**:
-> For the modernized release featuring OpenCV 5.0 compatibility, GPU-accelerated detection, Ceres robust losses (Huber/Cauchy), Stage 5 resume, and automated dual CPU/CUDA Docker builds, see branch [`feat/setup-opencv5-cuda`](https://github.com/AnshShah3009/calico/tree/feat/setup-opencv5-cuda) (or [Pull Request #1](https://github.com/AnshShah3009/calico/pull/1)).
+> **Updated by Ansh Shah**: Modernized for OpenCV 5.0, CUDA-accelerated target detection, Ceres robust loss functions (Huber, Cauchy), Stage 5 checkpointing and equation-level resume, CALICO Studio zero-dependency Web GUI, dataset pre-flight validator, production exporters (OpenCV FileStorage, ROS/ROS2 CameraInfo, Nerfstudio transforms.json, COLMAP), MuJoCo ground-truth multi-camera verification suite, and automated dual CPU/CUDA Docker CI/CD.
 
 CALICO: a method for calibrating asynchronous camera networks and/or multicamera systems, version **. December 2023 (Original release November 2019).
 
 Changelog: 
-- **Updated by Ansh Shah**: Added 21 Quality-of-Life (QoL) CLI flags, structured JSON output (`calibration.json`), dry-run validation, and checkpoint resume. (OpenCV 5 & CUDA in `feat/setup-opencv5-cuda`).
+- **Updated by Ansh Shah (2024-2026)**: Added OpenCV 5.0 compatibility shim, CUDA GPU acceleration, Ceres robust losses (Huber, Cauchy), Stage 5 checkpoint/resume, 21 Quality-of-Life (QoL) CLI flags, structured JSON output (`calibration.json`), CALICO Studio Web GUI, dataset validator, production exporters (OpenCV FileStorage, ROS, NeRF, COLMAP), MuJoCo simulation benchmarks, and Docker Hub CI/CD.
 - code factoring and reorganization; added April Tags support. January 2024.
 - Docker image added March 2020.
 - Added incremental method as default, and another overhaul, April 2020.
@@ -29,7 +26,7 @@ Roadmap
 
 ## Multi-Camera Rig Calibration & Verification Showcase
 
-Detailed documentation and visual walkthrough available in [CALIBRATION_WALKTHROUGH.md](https://github.com/AnshShah3009/calico/blob/feat/setup-opencv5-cuda/docs/CALIBRATION_WALKTHROUGH.md).
+Detailed documentation and visual walkthrough available in [docs/CALIBRATION_WALKTHROUGH.md](docs/CALIBRATION_WALKTHROUGH.md).
 
 ### 1. Multi-Camera Rig Setup
 A 3-camera surround system observing synchronized rigid ChArUco calibration targets in MuJoCo:
@@ -114,12 +111,15 @@ If you use this code in project that results in a publication, please cite at a 
 
 ### Pre-built Docker Images (CPU & GPU/CUDA)
 
-Both CPU and GPU-accelerated Docker images are supported:
+Published images: [anshshah3009/calico](https://hub.docker.com/r/anshshah3009/calico/tags)
 
-| Image Flavor | Docker Tag | Hardware Requirements |
-| :--- | :--- | :--- |
-| **CPU** | `<username>/calico:cpu` (or `:latest`) | x86_64 CPU |
-| **CUDA (GPU)** | `<username>/calico:cuda` | NVIDIA GPU + NVIDIA Container Toolkit |
+| Flavor | Tags (**which image you get**) | Approx. size | Hardware |
+| :--- | :--- | ---: | :--- |
+| **CPU** (no GPU) | `anshshah3009/calico:cpu`<br>`anshshah3009/calico:cpu-latest`<br>`anshshah3009/calico:latest` *(alias of CPU)* | ~138 MB | x86_64 CPU |
+| **CUDA** (GPU) | `anshshah3009/calico:cuda`<br>`anshshah3009/calico:cuda-latest` | ~3.2 GB | NVIDIA GPU + [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) |
+
+- **CPU** tags — `cpu`, `cpu-latest`, and `latest` are the **same CPU image** (OpenCV 5 + Ceres, CPU detect/solve).
+- **CUDA** tags — `cuda` and `cuda-latest` are the **GPU image**. Do **not** pull `:latest` if you want CUDA.
 
 #### Automated CI/CD Publishing to Docker Hub
 To automatically build and push both images on releases and pushes to `main`:
@@ -127,7 +127,9 @@ To automatically build and push both images on releases and pushes to `main`:
 2. Add the following repository secrets:
    - `DOCKERHUB_USERNAME`: Your Docker Hub username.
    - `DOCKERHUB_TOKEN`: A Docker Hub Personal Access Token (PAT) with `Read & Write` permissions.
-3. Once configured, GitHub Actions will automatically build, tag, and publish both `calico:cpu` and `calico:cuda` images on release tags or manual workflow dispatch.
+3. Once configured, GitHub Actions publishes:
+   - **CPU** → `:cpu`, `:cpu-latest`, `:latest`
+   - **CUDA** → `:cuda`, `:cuda-latest`
 
 #### Manual Push
 Alternatively, you can build and push both images from your terminal using:
@@ -137,42 +139,56 @@ Alternatively, you can build and push both images from your terminal using:
 
 ### Pull the image
 
-The image for CALICO is : [amytabb/calico-dec2023](https://hub.docker.com/r/amytabb/calico-dec2023).
-
+**CPU** (any of these tags is the CPU image):
 ```bash
-docker pull amytabb/calico-dec2023:mar2024
+docker pull anshshah3009/calico:cpu-latest
+# or: docker pull anshshah3009/calico:cpu
+# or: docker pull anshshah3009/calico:latest
 ```
+
+**CUDA / GPU** (these tags are the CUDA image):
+```bash
+docker pull anshshah3009/calico:cuda-latest
+# or: docker pull anshshah3009/calico:cuda
+```
+
+Legacy Amy Tabb image: [amytabb/calico-dec2023](https://hub.docker.com/r/amytabb/calico-dec2023).
 
 ### Run the image
 
-CALICO needs to read and write results to disk; to do so with Docker means that we need to mount a portion of your hard drive to a volume in the Docker image.
+CALICO needs to read and write results to disk; bind-mount a host directory to `/docker_dir` in the container.
 
-I used a bind mount below; the Docker image's volume is `docker_dir` and will not change no matter which machine or dataset you run it on.  `/full/file/path/on/your/machine` is the directory that you want the reading and writing to occur.  
-
-Example:
-
+**CPU example:**
 ```bash
-sudo docker run -v /full/file/path/on/your/machine:/docker_dir -it amytabb/calico:latest bash
+docker run --rm -it -v /full/file/path/on/your/machine:/docker_dir \
+  --entrypoint bash anshshah3009/calico:cpu-latest
 ```
 
-The bind mount is potentially confusing, so here is an example.  Say I have a directory `/home/amy/Data/March/` and within `March` is a directory of images that I want to process with CALICO.  I also want to write to a directory within `/home/amy/Data/March/`.  So, 
-
+**CUDA example** (requires NVIDIA Container Toolkit):
 ```bash
-sudo docker run -v /home/amy/Data/March:/docker_dir -it amytabb/calico:latest bash
+docker run --rm -it --gpus all -v /full/file/path/on/your/machine:/docker_dir \
+  --entrypoint bash anshshah3009/calico:cuda-latest
 ```
 
-Creates a container with all of the libraries and a Ubuntu 18.04 operating system, and bash shell (command line), and may look something like:
+The bind mount is potentially confusing, so here is an example.  Say I have a directory `/home/amy/Data/March/` and within `March` is a directory of images that I want to process with CALICO.  I also want to write to a directory within `/home/amy/Data/March/`.  So,
+
+```bash
+docker run --rm -it -v /home/amy/Data/March:/docker_dir \
+  --entrypoint bash anshshah3009/calico:cpu-latest
+```
+
+Creates a container with all of the libraries and a bash shell (command line), and may look something like:
 
 ```bash
 root@f6feb7ce8c31:/docker_dir# 
 ```
 
-but if you take a look at the contents of `/host_dir`, with `ls`, they are `/home/amy/Data/March/`.  That's the bind mount magic.
+but if you take a look at the contents of `/docker_dir`, with `ls`, they are `/home/amy/Data/March/`.  That's the bind mount magic.
 
 First, suppose we forgot to create the write directory.  No problem.
 
 ```bash
-root@f6feb7ce8c31:/host_dir# mkdir write-dir
+root@f6feb7ce8c31:/docker_dir# mkdir write-dir
 ```
 
 creates our write directory `write-dir`.
@@ -246,36 +262,41 @@ where `/usr/local/opencv41/lib/cmake/opencv4/` is the directory containing `Open
 
 ## Running
 
-### Quality-of-Life Flags (21 total added in this fork)
+### Quality-of-Life & Modernized CLI Flags
 
-| Flag | Type | Description |
+| Flag | Argument | Description |
 | :--- | :--- | :--- |
-| `--version` | flag | Print version and exit |
-| `--dry-run` | flag | Validate input without calibrating |
-| `--quiet` | flag | Suppress all calibration stdout |
-| `--summary` | flag | Print brief summary after calibration |
-| `--progress` | flag | Show stage 4/5 progress percentage |
-| `--no-progress` | flag | Disable progress even with `--progress` |
-| `--timestamp` | flag | Append timestamp to output dir |
-| `--no-overwrite` | flag | Refuse if output dir has results |
-| `--force` | flag | Override `--no-overwrite` |
-| `--checkpoint` | flag | Periodic solver state checkpointing |
-| `--resume=DIR` | arg | Resume from checkpoint directory |
-| `--auto-rename` | flag | Add input basename to output dir |
-| `--json` | flag | Write `calibration.json` output |
-| `--config=FILE` | arg | Read options from config file |
-| `--camera-color=STR` | arg | Per-camera PLY colors (`R,G,B|R,G,B|...`) |
-| `--pattern-color=STR` | arg | Per-pattern PLY colors |
-| `--camera-names=STR` | arg | Comma-separated camera name overrides |
-| `--exclude-camera=STR` | arg | Comma-separated cameras to exclude |
-| `--focus-camera=STR` | arg | Only calibrate listed cameras (inverse of exclude) |
-| `--max-images=INT` | arg | Unified image cap for all cameras |
-| `--min-boards=INT` | arg | Auto-exclude cameras detecting fewer than N boards |
-| `--num-threads=N` | arg | Thread count (default: OMP max) |
-| `--no-visualization` | flag | Skip PLY meshes + equation PNGs |
-| `--no-debug-images` | flag | Skip per-image detection PNGs |
-| `--detection-summary` | flag | Print board visibility table per camera |
-| `--per-camera-mse` | flag | Append per-camera reprojection MSE to output |
+| `--help` | — | Display comprehensive help and argument list |
+| `--version` | — | Print version information and exit |
+| `--dry-run` | — | Validate dataset structure, pattern files, and camera inputs without calibrating |
+| `--quiet` | — | Suppress verbose calibration logs |
+| `--summary` | — | Print concise post-calibration summary with errors and metrics |
+| `--progress` | — | Display interactive progress percentage for Stage 4 & 5 solving |
+| `--no-progress` | — | Disable progress display |
+| `--timestamp` | — | Automatically append execution timestamp to the output directory |
+| `--no-overwrite` | — | Abort safely if the target output directory already contains results |
+| `--force` | — | Force overwrite existing output directory |
+| `--auto-rename` | — | Append input dataset basename to output directory name |
+| `--json` | — | Export structured `calibration.json` with intrinsics, extrinsics, and poses |
+| `--checkpoint` | — | Periodically write optimization checkpoint files to disk |
+| `--resume=<dir>` | Path | Resume calibration from saved checkpoint directory |
+| `--use-cuda` | — | Enable CUDA GPU acceleration for frame conversion and target detection |
+| `--loss=<type>` | `trivial`, `huber`, `cauchy` | Set Ceres Solver robust loss function for bundle adjustment |
+| `--loss-scale=<val>` | Float | Scale parameter delta for Huber / Cauchy loss function |
+| `--ingest-intrinsics=<dir>` | Path | Ingest pre-calibrated intrinsic parameters and fix them during optimization |
+| `--config=<path>` | Path | Load arguments and options from a `.cfg` / `.yaml` file |
+| `--num-threads=<N>` | Int | Number of OpenMP worker threads |
+| `--camera-names=<list>` | String | Comma-separated camera name overrides |
+| `--exclude-camera=<cam>`| String | Comma-separated cameras to exclude |
+| `--focus-camera=<cam>` | String | Process only specified cameras (inverse of exclude) |
+| `--max-images=<N>` | Int | Unified image cap across cameras (fills unset max-internal/external) |
+| `--min-boards=<N>` | Int | Auto-exclude cameras detecting fewer than N boards |
+| `--camera-color=<RGB>` | String | Per-camera PLY visualization colors (`R,G,B\|R,G,B\|...`) |
+| `--pattern-color=<RGB>`| String | Per-pattern PLY visualization colors |
+| `--no-visualization` | — | Skip PLY meshes and equation PNG generation |
+| `--no-debug-images` | — | Skip per-image detection PNG writing |
+| `--detection-summary` | — | Print board visibility table per camera |
+| `--per-camera-mse` | — | Compute and report per-camera reprojection MSE in output |
 
 To see the available options, run `./calico-dec2023` with no arguments or `--help`.:
 
@@ -283,11 +304,12 @@ To see the available options, run `./calico-dec2023` with no arguments or `--hel
 Printing help for calico, Dec. 2023.
 ESSENTIAL FUNCTIONALITY -------------------
 --verbose                     No arguments.  Writes additional information during the run.
---create-patterns             No arguments, write charuco or april image patterns from a specification file.
+--create-patterns             No arguments, write charuco, april, or aruco image patterns from a specification file.
 --calibrate                   No arguments, indicates that this dataset is a camera network or multicamera system.
 --num-threads                 Number of threads to use.  Default is # returned by omp_get_max_threads();, currently = 24
 --charuco                     Using charuco patterns.
 --april                       Using AprilTag patterns.
+--aruco                       Using ArUco marker grids (OpenCV GridBoard-style).
 
 DIRECTORIES AND PATHS ----------------------- 
 --input=[STRING]              Mandatory, has to be a directory.
@@ -348,7 +370,10 @@ It is suggested that you generate aruco patterns to use in your own calibrations
 As mentioned in [Run the image](#run-the-image), you start the Docker container from the command line, and then issue commands similar to above.  So, start the container running, 
 
 ````bash
-sudo docker run -v /home/amy/Data/March/:/docker_dir -it amytabb/calico-dec2023:latest bash
+# CPU:
+docker run --rm -it -v /home/amy/Data/March/:/docker_dir --entrypoint bash anshshah3009/calico:cpu-latest
+# CUDA / GPU:
+# docker run --rm -it --gpus all -v /home/amy/Data/March/:/docker_dir --entrypoint bash anshshah3009/calico:cuda-latest
 ````
 
 And this will start the container.  Suppose we forgot to create a directory for the results. 
@@ -547,8 +572,60 @@ world-ideal_pattern2.ply
 world-ideal_pattern3.ply
 ````
 
+
+---
+
+## 🚀 CALICO Studio & GUI Tools
+
+To make multi-camera calibration intuitive without memorizing CLI flags or formatting configuration files manually, CALICO includes **CALICO Studio**—a zero-dependency, browser-based graphical user interface:
+
+### 1. Launching CALICO Studio
+```bash
+./tools/calico_gui.py --port 8080
+```
+Open **`http://localhost:8080`** in your browser.
+
+#### Studio Capabilities:
+- **⚡ Calibration Wizard & Configuration Presets**:
+  - One-click configuration presets: Standard ChArUco, AprilTag Grid (GPU), High-Robustness, and Quick Draft.
+  - Automatically discovers datasets in your workspace.
+  - Interactive controls for pattern geometry (ChArUco vs AprilTag, dimensions, dictionaries).
+  - One-click optimization settings: Huber/Cauchy robust Ceres loss, GPU CUDA acceleration toggle, worker threads, and periodic checkpointing.
+  - Live console terminal with real-time solver log streaming and progress percentages.
+- **🔍 Pre-Flight Dataset Validation**:
+  - Automatically inspects multi-camera datasets in seconds before solving.
+  - Checks camera frame synchronization, image dimensions, markerLength vs squareLength constraints, and ArUco/AprilTag dictionary capacity overflow.
+- **🌐 Interactive 3D Inspector**:
+  - Embedded Three.js WebGL viewport showing calibrated camera pyramids, optical axes, and target boards in 3D world space.
+  - **Raycaster Selection**: Click any camera frustum in 3D space to inspect its intrinsics ($f_x, f_y, c_x, c_y$), distortion coefficients ($k_1, k_2, p_1, p_2, k_3$), and reprojection RMS error.
+  - **Look Through Camera**: First-person perspective mode that positions the view at any camera's focal point.
+  - Dynamic pairwise baseline distance calculations (mm/cm).
+- **📦 One-Click Export Hub**:
+  - Direct export to standard **OpenCV `cv::FileStorage`** YAML format with camera matrices, distortion coefficients, and world-camera extrinsics for seamless C++ and Python integration.
+  - Direct export to **ROS / ROS2** `CameraInfo` YAML files.
+  - Direct export to **Nerfstudio** `transforms.json` for NeRF and 3D Gaussian Splatting.
+  - Direct export to **COLMAP** `cameras.txt` and `images.txt` for photogrammetry.
+
+### 2. Pre-Flight Dataset Validation CLI
+Quickly analyze and validate input datasets from the terminal:
+```bash
+python3 tools/validate_dataset.py DATA/mult-3-base/
+# Or output machine-readable JSON:
+python3 tools/validate_dataset.py DATA/mult-3-base/ --json
+```
+
+### 3. Standalone 3D Calibration Report
+Generate a standalone, shareable interactive 3D HTML dashboard for any calibration output:
+```bash
+python3 tools/visualize_calibration.py results/april-gpu/ -o report.html
+```
+
+### 4. Automated Test Suite
+Verify all GUI endpoints, export formats, video ingest pipelines, and math routines:
+```bash
+python3 tools/test_tools.py
+```
+
 #### TODO
 - write documentation for the ground truth comparison function.
-- Check for bad input : the number of markers specified in the files is greater than the size of the aruco dictionary.
-- Check for bad input : alert if markerLength is > squareLength
-Verbose and write: Add another flag for writing output, as lots of images are currently written.
+- Verbose and write: Add another flag for writing output, as lots of images are currently written.

@@ -9,6 +9,8 @@
 #include "camera-visualization.hpp"
 #include "helper.hpp"
 #include "solving-structure.hpp"
+#include "cuda-detect.hpp"
+#include <algorithm>
 // used 11/27
 void SolveWithShahsMethod(Matrix4d& Result, const vector<Matrix4d>& LHS, const vector<Matrix4d>& RHS, bool verbose){
 
@@ -152,7 +154,9 @@ void CopyFromCalibration(const vector<CameraCali*>& CCV, double* camera_params){
             camera_params[12*i + 4 + j] = 0;
         }
 
-        for (int j = 0; j < CCV[i]->distortion.rows(); j++){
+        // camera_params is fixed at 12 doubles/camera (4 intrinsics + 8 distortion).
+        const int n_dist = std::min(8, static_cast<int>(CCV[i]->distortion.rows()));
+        for (int j = 0; j < n_dist; j++){
             camera_params[12*i + 4 + j] = CCV[i]->distortion(j);
         }
     }
@@ -356,6 +360,7 @@ void ReconstructXFunctionIDsMCwithDLTs(MCcali& MC, vector<Matrix4d>& vector_vari
 
             has_values[k] = true;
             Solver::Options options;
+            calico_cuda::ApplyCeresOptions(options, g_use_cuda != 0);
             options.linear_solver_type = ceres::DENSE_QR;
             options.minimizer_progress_to_stdout = false;
             Solver::Summary summary;
@@ -637,7 +642,7 @@ void CeresProblemClass::AddEqsToProblemReprojectionError(MCcali& MC, vector<Came
 
     for (int i = 0; i < number_case_0; i++){
         problemRP.AddResidualBlock(case_0_cost_functions[i],
-                NULL /* squared loss */,
+                CreateLoss(),
                 case_0_c[i],
                 case_0_p[i],
                 case_0_t[i]);
@@ -647,7 +652,7 @@ void CeresProblemClass::AddEqsToProblemReprojectionError(MCcali& MC, vector<Came
     cout << "add case 1s RP " << endl;
     for (int i = 0; i < number_case_1; i++){
         problemRP.AddResidualBlock(case_1_cost_functions[i],
-                NULL /* squared loss */,
+                CreateLoss(),
                 case_1_c[i],
                 case_1_t[i]);
     }
@@ -655,7 +660,7 @@ void CeresProblemClass::AddEqsToProblemReprojectionError(MCcali& MC, vector<Came
     cout << "add case 2s RP " << endl;
     for (int i = 0; i < number_case_2; i++){
         problemRP.AddResidualBlock(case_2_cost_functions[i],
-                NULL /* squared loss */,
+                CreateLoss(),
                 case_2_c[i],
                 case_2_p[i]);
     }
@@ -663,7 +668,7 @@ void CeresProblemClass::AddEqsToProblemReprojectionError(MCcali& MC, vector<Came
     cout << "add case 3s RP " << endl;
     for (int i = 0; i < number_case_3; i++){
         problemRP.AddResidualBlock(case_3_cost_functions[i],
-                NULL /* squared loss */,
+                CreateLoss(),
                 case_3_c[i]);
     }
 }
@@ -925,6 +930,7 @@ void CeresProblemClass::SolveWriteBackToMCAlgebraicError(MCcali& MC, std::ofstre
 
 
     Solver::Options options;
+    calico_cuda::ApplyCeresOptions(options, g_use_cuda != 0);
     options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
 
     options.minimizer_progress_to_stdout = output_to_terminal;
@@ -972,6 +978,7 @@ void CeresProblemClass::SolveWriteBackToMCRP(MCcali& MC, std::ofstream& out, int
 
     Solver::Options options;
 
+    calico_cuda::ApplyCeresOptions(options, g_use_cuda != 0);
     options.linear_solver_type = ceres::DENSE_SCHUR;
 
     options.minimizer_progress_to_stdout = output_to_terminal;
@@ -1106,6 +1113,7 @@ void XASolveIteratively(vector<Matrix4d>& As, Matrix4d& X, PARAM_TYPE param_type
     }
 
     Solver::Options options;
+    calico_cuda::ApplyCeresOptions(options, g_use_cuda != 0);
     options.linear_solver_type = ceres::DENSE_QR;
 
     options.minimizer_progress_to_stdout = false;
@@ -1172,6 +1180,7 @@ void AXZBSolveIteratively(vector<Matrix4d>& As, vector<Matrix4d>& Bs, Matrix4d& 
     }
 
     Solver::Options options;
+    calico_cuda::ApplyCeresOptions(options, g_use_cuda != 0);
     options.linear_solver_type = ceres::DENSE_QR;
 
     options.minimizer_progress_to_stdout = true;

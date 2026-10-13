@@ -1,0 +1,110 @@
+[
+  {
+    "label": "4X4_50 5\u00d74",
+    "arcCode": 0,
+    "grid": "5x4",
+    "markers_on_board": 10,
+    "expected_corners": 12,
+    "detected_corners": 12,
+    "detected_markers": 10,
+    "ok": true,
+    "board": "charuco_0_5x4_80.png",
+    "detect": "charuco_0_5x4_80_detect.png"
+  },
+  {
+    "label": "4X4_100 7\u00d75",
+    "arcCode": 1,
+    "grid": "7x5",
+    "markers_on_board": 17,
+    "expected_corners": 24,
+    "detected_corners": 24,
+    "detected_markers": 17,
+    "ok": true,
+    "board": "charuco_1_7x5_80.png",
+    "detect": "charuco_1_7x5_80_detect.png"
+  },
+  {
+    "label": "5X5_100 7\u00d75",
+    "arcCode": 5,
+    "grid": "7x5",
+    "markers_on_board": 17,
+    "expected_corners": 24,
+    "detected_corners": 24,
+    "detected_markers": 17,
+    "ok": true,
+    "board": "charuco_5_7x5_80.png",
+    "detect": "charuco_5_7x5_80_detect.png"
+  },
+  {
+    "label": "6X6_250 7\u00d75 (default)",
+    "arcCode": 10,
+    "grid": "7x5",
+    "markers_on_board": 17,
+    "expected_corners": 24,
+    "detected_corners": 24,
+    "detected_markers": 17,
+    "ok": true,
+    "board": "charuco_10_7x5_80.png",
+    "detect": "charuco_10_7x5_80_detect.png"
+  },
+  {
+    "label": "6X6_250 9\u00d76",
+    "arcCode": 10,
+    "grid": "9x6",
+    "markers_on_board": 27,
+    "expected_corners": 40,
+    "detected_corners": 40,
+    "detected_markers": 27,
+    "ok": true,
+    "board": "charuco_10_9x6_70.png",
+    "detect": "charuco_10_9x6_70_detect.png"
+  },
+  {
+    "label": "6X6_1000 12\u00d79",
+    "arcCode": 11,
+    "grid": "12x9",
+    "markers_on_board": 54,
+    "expected_corners": 88,
+    "detected_corners": 88,
+    "detected_markers": 54,
+    "ok": true,
+    "board": "charuco_11_12x9_56.png",
+    "detect": "charuco_11_12x9_56_detect.png"
+  },
+  {
+    "label": "7X7_250 8\u00d76",
+    "arcCode": 14,
+    "grid": "8x6",
+    "markers_on_board": 24,
+    "expected_corners": 35,
+    "detected_corners": 35,
+    "detected_markers": 24,
+    "ok": true,
+    "board": "charuco_14_8x6_72.png",
+    "detect": "charuco_14_8x6_72_detect.png"
+  },
+  {
+    "label": "APRIL_36h11 7\u00d75",
+    "arcCode": 20,
+    "grid": "7x5",
+    "markers_on_board": 17,
+    "expected_corners": 24,
+    "detected_corners": 24,
+    "detected_markers": 17,
+    "ok": true,
+    "board": "charuco_20_7x5_80.png",
+    "detect": "charuco_20_7x5_80_detect.png"
+  },
+  {
+    "label": "5X5_50 5\u00d74 sparse",
+    "arcCode": 4,
+    "grid": "5x4",
+    "markers_on_board": 10,
+    "expected_corners": 12,
+    "detected_corners": 12,
+    "detected_markers": 10,
+    "ok": true,
+    "board": "charuco_4_5x4_100.png",
+    "detect": "charuco_4_5x4_100_detect.png"
+  }
+]

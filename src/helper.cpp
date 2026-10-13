@@ -7,6 +7,8 @@
 
 #include "helper.hpp"
 
+profileInfo profileClass;
+
 // cleared Sat
 
 profileInfo::profileInfo(){
@@ -133,5 +135,3 @@ void CopyFile(const string& source, const string& destination){
     src.close();
     dest.close();
 }
-
-

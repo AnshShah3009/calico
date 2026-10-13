@@ -1,4 +1,14 @@
 build/
+src-build/
 exif.txt
 .project
 .cproject
+DATA/
+*.pdf
+src/test.txt
+results/
+exports/
+__pycache__/
+*.pyc
+sim/output_*/
+sim/mujoco-*/

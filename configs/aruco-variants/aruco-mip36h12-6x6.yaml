@@ -1,0 +1,10 @@
+%YAML:1.0
+# Variant arcCode=21 6x6
+type: aruco
+squaresX: 6
+squaresY: 6
+squareLength: 80
+margins: 20
+tagSpace: 16
+numberBoards: 2
+arcCode: 21
