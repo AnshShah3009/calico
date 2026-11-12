@@ -89,6 +89,44 @@ Supported `arcCode` values include OpenCV predefined dictionaries `0`–`20` plu
 
 Example specs: `configs/aruco-grid.yaml` (default 6×6, `arcCode: 10`) and `configs/aruco-variants/` (`4X4` / `6X6` / `7X7` / MIP 36h12). Generate with `--aruco --create-patterns`, then calibrate with `--aruco --calibrate`.
 
+## Corner refinement
+
+`--corner-refine=model|subpix|none` (default `model`) and `--gamma=<g>` (default 2.2). Code:
+`src/corner-model.hpp` (host/device math), `src/corner-refine.{hpp,cpp}` (CPU fit, ChArUco
+prediction, tag-grid L-corners), `src/corner_refine_cuda.cu` (batched GPU fit).
+
+- **ChArUco** (X-junctions): chessboard corners predicted from the adjacent markers' local
+  homographies (not detectBoard / ingested K), `cornerSubPix` start (predicted corner if it
+  wanders), then the X-junction fit; window from the local marker homography, cut at the gap to
+  the markers (1.5 modules, module = (square - marker) / 3).
+- **AprilTag / ArUco grids** (L-corners: no spacer squares): `cornerSubPix` start (raw detector
+  corner if it wanders), then the L-corner fit; window <= 1.4 tag modules (inside the black
+  border) and <= 0.9 x tagSpace / margin.
+- Model: exact Gaussian-blurred wedge, Φ₂(h, k; ρ = n₁·n₂) (L) / 4Φ₂ − 2Φ(h) − 2Φ(k) + 1 (X), on
+  inverse-gamma intensities, 7 parameters, LM. Exact for foreshortened corners.
+- Rules: a corner whose fit fails is dropped (never kept unrefined; keeping cornerSubPix points on
+  tiny far boards made the ChArUco sim worse); ids seen twice in a frame are dropped; clipped
+  whites are kept, a window is rejected only when > 60 % (X) / > 85 % (L, ~3/4 white) is clipped.
+  No spacer-parallelogram test (invalid close to a fisheye).
+- `--use-cuda` + `ENABLE_CUDA`: one thread block per corner, window in shared memory, device-side
+  LUT linearisation; same `corner-model.hpp` arithmetic as the CPU, falls back to the CPU on any
+  CUDA error. `CALICO_REFINE_DEBUG=1` prints per-frame fit outcomes.
+- `none` reproduces main's outputs bit for bit (checked on the MuJoCo AprilTag sim).
+
+Measured (`calico_tests`, synthetic, gamma 1/2.2 encoding, noise 1.5 DN):
+
+| Case | Old | New (model) |
+| :--- | :--- | :--- |
+| X-junction, 300 corners, blur 0.7-2 px, edges 60-120 deg | cornerSubPix median 0.037 / p95 0.132 px | median 0.008 / p95 0.021 px, bias < 0.001 px |
+| L-corner, same | cornerSubPix median 0.97 / p95 1.58 px | median 0.027 / p95 0.068 px (0.60 / 0.88 px without linearising) |
+| ArUco 6x4 grid, 3 views + distortion, blur 1.1 px | raw 1.20 / 1.72 px, cornerSubPix 0.82 / 0.87 px | 0.017 / 0.033 px |
+| AprilTag 36h11 grid (Kaess), same | raw 0.68 / 0.81 px, cornerSubPix 0.82 / 0.87 px | 0.020 / 0.037 px |
+| ChArUco 7x5, same | OpenCV interpolation 0.017 / 0.037 px | 0.0065 / 0.012 px |
+
+GPU (RTX 5070 Ti Laptop, sm_120) vs CPU, 2400 fits on a 1920x1152 frame: max |Δp| 3e-14 px,
+0 accept/reject mismatches; 56-75 ms GPU (incl. upload + linearisation) vs 205 ms CPU (24
+OpenMP threads) vs 1.4 s single thread.
+
 ## Running
 
 Exactly one of `--charuco`, `--april`, or `--aruco` is **mandatory**. `--calibrate` or `--create-patterns` also mandatory.
@@ -114,7 +152,7 @@ Use factory / previous `cali_results.txt`:
 
 ### Quality-of-life flags
 
-See `--help`. Config file format (`configs/calico.cfg`):
+See `--help`. Corner refinement: `--corner-refine=model|subpix|none`, `--gamma=2.2` (see above). Config file format (`configs/calico.cfg`):
 
 ```
 quiet: 1

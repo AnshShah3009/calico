@@ -161,6 +161,26 @@ inline void CalicoFilterMarkersForBoard(const cv::Ptr<cv::aruco::CharucoBoard>& 
     }
 }
 
+// Recovers markers of one board from rejected quads (board layout known). No-op when nothing to do.
+inline void CalicoRefineMarkersForBoard(const cv::Mat& image,
+        const cv::Ptr<cv::aruco::CharucoBoard>& board,
+        std::vector<std::vector<cv::Point2f> >& corners,
+        std::vector<int>& ids,
+        std::vector<std::vector<cv::Point2f> >& rejected,
+        const cv::Ptr<cv::aruco::DetectorParameters>& params) {
+    if (rejected.empty() || corners.empty()) {
+        return;
+    }
+#if CALICO_ARUCO_MODERN
+    cv::aruco::ArucoDetector detector(CalicoBoardDictionary(board), *params);
+    detector.refineDetectedMarkers(image, *board, corners, ids, rejected);
+#else
+    cv::Ptr<cv::aruco::Board> b = board;
+    cv::aruco::refineDetectedMarkers(image, b, corners, ids, rejected,
+            cv::noArray(), cv::noArray(), 10.f, 3.f, true, cv::noArray(), params);
+#endif
+}
+
 #if CALICO_ARUCO_MODERN
 inline void CalicoInterpolateCharuco(const cv::Mat& image,
         const cv::Ptr<cv::aruco::CharucoBoard>& board,

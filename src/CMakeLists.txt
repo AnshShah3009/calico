@@ -81,6 +81,9 @@ helper-cali.hpp
 apriltag-file.cpp
 cuda-detect.cpp
 cuda-detect.hpp
+corner-model.hpp
+corner-refine.cpp
+corner-refine.hpp
 )
 
 set(compute_error_SOURCES
@@ -106,8 +109,8 @@ if(ENABLE_CUDA)
         set(CMAKE_CUDA_STANDARD 17)
         set(CMAKE_CUDA_STANDARD_REQUIRED ON)
         find_package(CUDAToolkit REQUIRED)
-        list(APPEND calico_SOURCES apriltag_cuda.cu)
-        list(APPEND CALICO_CUDA_SOURCES apriltag_cuda.cu)
+        list(APPEND calico_SOURCES apriltag_cuda.cu corner_refine_cuda.cu)
+        list(APPEND CALICO_CUDA_SOURCES apriltag_cuda.cu corner_refine_cuda.cu)
         add_definitions(-DCALICO_USE_CUDA)
         set(CALICO_CUDA_LIBS CUDA::cudart)
         # Optional OpenCV CUDA imgproc (contrib). Docker builds omit it.
@@ -214,7 +217,9 @@ if(BUILD_TESTING)
         tests/test_pattern_params.cpp
         tests/test_math_helpers.cpp
         tests/test_loss_and_checkpoint.cpp
+        tests/test_corner_refine.cpp
         pattern-parameters.cpp
+        corner-refine.cpp
         apriltag-file.cpp
         cuda-detect.cpp
         helper.cpp
