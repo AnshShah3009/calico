@@ -11,6 +11,7 @@
 #include "local-charuco.hpp"
 #include "helper-cali.hpp"
 #include "cuda-detect.hpp"
+#include "corner-refine.hpp"
 
 
 CameraCali::CameraCali(const string& read_dir, PatternsCreated* P, int max_ext_images, int max_int_images_read,
@@ -221,6 +222,12 @@ void CameraCali::FindCornersCharuco(const string& write_dir, bool write_internal
                 CalicoDetectMarkers(grayImage, P_class->dictionary, corners, ids, P_class->detectorParams, rejected);
             }
 
+            const bool model_refine = calico_refine::Config().mode == calico_refine::RefineMode::kModel;
+            if (model_refine) {
+                // An id seen twice in one frame is ambiguous: drop both.
+                calico_refine::DropDuplicateIds(corners, ids);
+            }
+
             // draw results -- dealing with the possibility of more than one board per image.
             if(ids.size() > 0) {
                 //we id the board by the aruco tag.
@@ -240,6 +247,18 @@ void CameraCali::FindCornersCharuco(const string& write_dir, bool write_internal
                         CalicoFilterMarkersForBoard(P_class->boards.at(p), corners, ids,
                                 board_corners, board_ids);
 
+                        if (model_refine) {
+                            // Chessboard corners predicted from the adjacent markers' local
+                            // homographies (valid under strong distortion), then cornerSubPix +
+                            // X-junction model fit; failures are dropped.
+                            std::vector<std::vector<cv::Point2f> > rejected_board = rejected;
+                            CalicoRefineMarkersForBoard(grayImage, P_class->boards.at(p),
+                                    board_corners, board_ids, rejected_board, P_class->detectorParams);
+                            calico_refine::DropDuplicateIds(board_corners, board_ids);
+                            calico_refine::RefineCharucoCorners(grayImage, P_class->boards.at(p),
+                                    board_corners, board_ids, charucoCorners, charucoIds,
+                                    calico_refine::Config());
+                        } else {
 #if CALICO_ARUCO_MODERN
                         CalicoInterpolateCharuco(grayImage, P_class->boards.at(p),
                                 board_corners, board_ids, rejected, charucoCorners, charucoIds,
@@ -249,6 +268,7 @@ void CameraCali::FindCornersCharuco(const string& write_dir, bool write_internal
                                 board_corners, board_ids, grayImage,
                                 P_class->boards.at(p), charucoCorners, charucoIds);
 #endif
+                        }
 
 
                         collinear_markers = cv::aruco::charucoLocal::testCharucoCornersCollinear(P_class->boards.at(p),
@@ -411,6 +431,20 @@ void CameraCali::FindCornersApril(const string& write_dir, bool write_internal_i
                         P_class->pp.ATObject.m_tagDetector, detections);
             }
 
+            // Tag corners are L-corners (dark tag on the light gap): model fit or cornerSubPix
+            // per --corner-refine; a corner whose refinement fails is dropped.
+            std::vector<std::array<bool, 4> > corner_keep(detections.size(), {true, true, true, true});
+            if (calico_refine::Config().mode != calico_refine::RefineMode::kNone) {
+                calico_refine::DropDuplicateIds(detections);
+                const int cells = P_class->is_aruco ? calico_refine::ArucoCells(P_class->pp.arc_code)
+                        : calico_refine::AprilTagCells(P_class->pp.april_family,
+                                P_class->pp.ATObject.m_apriltag_lib_tag_family != 0);
+                const double side = P_class->pp.squareLength > 0 ? P_class->pp.squareLength : 1.0;
+                calico_refine::RefineTagCorners(grayCopy, detections, cells,
+                        P_class->pp.tagSpace / side, P_class->pp.margins / side, corner_keep,
+                        calico_refine::Config());
+            }
+
             // print out each detection
             cout << detections.size() << " ID tags detected for image " << i << endl;
 
@@ -446,6 +480,9 @@ void CameraCali::FindCornersApril(const string& write_dir, bool write_internal_i
                     }
 
                     for (uint k = 0; k < 4; k++){
+                        if (!corner_keep[j][k]) {
+                            continue;
+                        }
                         Point2f p(detections[j].p[k].first, detections[j].p[k].second);
 
                         int grid_index =  ConvertAprilMarkerIdIndexToGridPointIndex(P_class->pp.squaresX, detections[j].id,

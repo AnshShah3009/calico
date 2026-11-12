@@ -297,6 +297,37 @@ where `/usr/local/opencv41/lib/cmake/opencv4/` is the directory containing `Open
 | `--no-debug-images` | — | Skip per-image detection PNG writing |
 | `--detection-summary` | — | Print board visibility table per camera |
 | `--per-camera-mse` | — | Compute and report per-camera reprojection MSE in output |
+| `--corner-refine=<mode>` | `model` (default), `subpix`, `none` | Corner refinement: model-based X-junction (ChArUco) / L-corner (`--april`, `--aruco`) fit on gamma-linearised intensities; `subpix` = cornerSubPix; `none` = legacy behaviour |
+| `--gamma=<val>` | Float (default `2.2`) | Camera encoding gamma undone before the model fit (`1` for a linear / raw sensor) |
+
+### Corner refinement (`--corner-refine`, `--gamma`)
+
+By default (`--corner-refine=model`) every fiducial corner is refined with a model fit on
+**linear** intensities (the 8-bit frame is passed through an inverse-gamma lookup table first):
+
+* **ChArUco** chessboard corners are X-junctions. Each corner is predicted from the *local
+  homographies* of its adjacent markers (valid under strong lens distortion, unlike one board
+  homography or a pose without K), started from `cornerSubPix`, then fitted with a blurred
+  saddle model in an elliptical window sized from the local marker homography and kept inside the
+  gap to the markers.
+* **AprilTag / ArUco grids** have no spacer squares, so their corners are **L-corners** (outer
+  corner of a dark tag on the light gap). Under blur plus gamma encoding an L-corner shifts
+  toward black by ~0.4 σ<sub>blur</sub> per edge; detectors and `cornerSubPix` inherit that bias.
+  The L-corner model (one dark wedge) on linearised intensities removes it.
+
+The model is the exact Gaussian-blurred wedge, `I = c + a·Φ₂(h, k; ρ)` (L) or
+`I = c + a·(4Φ₂ − 2Φ(h) − 2Φ(k) + 1)` (X), with `h, k` the signed distances to the two edges in
+units of the blur σ and `ρ = n₁·n₂` (Φ₂ = bivariate normal CDF), so foreshortened corners are
+handled exactly. Seven parameters (corner, two edge angles, blur, offset, contrast) are fitted by
+Levenberg-Marquardt. A corner is **dropped**, never kept unrefined, if the fit fails its gates
+(moved > ½ module, edge angles, polarity, contrast, blur vs window, residual, covariance, > 60 %
+of the window clipped = glare). Marker ids seen twice in one frame are dropped. With
+`--use-cuda` (and a CUDA build) the fits run batched on the GPU (one thread block per corner,
+window in shared memory, device-side linearisation); the CPU path is the fallback and agrees to
+rounding.
+
+`--corner-refine=none` reproduces the previous outputs exactly (OpenCV ChArUco interpolation,
+raw tag-detector corners). Measured accuracy is in [AGENTS.md](AGENTS.md#corner-refinement).
 
 To see the available options, run `./calico-dec2023` with no arguments or `--help`.:
 

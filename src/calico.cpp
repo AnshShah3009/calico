@@ -15,6 +15,7 @@
 #include "solving-structure.hpp"
 #include "pattern-parameters.hpp"
 #include "cuda-detect.hpp"
+#include "corner-refine.hpp"
 #include <ctime>
 #include <unistd.h>
 #include <fcntl.h>
@@ -83,6 +84,8 @@ int main(int argc, char **argv){
     string ingest_intrinsics_dir = "";
     string loss_type = "trivial";
     float loss_scale = 1.0f;
+    string corner_refine_str = "";
+    double gamma_value = -1;
     // Track which CLI flags were explicitly passed so config cannot clobber them
     // even when the value equals the default (e.g. --loss=trivial, --loss-scale=1.0).
     bool cli_set_num_pattern = false;
@@ -152,6 +155,9 @@ int main(int argc, char **argv){
                 {"ingest-intrinsics", required_argument, 0, 'x'},
                 {"loss", required_argument, 0, 'y'},
                 {"loss-scale", required_argument, 0, 'z'},
+                {"corner-refine", required_argument, 0, 1001},
+                {"gamma", required_argument, 0, 1002},
+                {0, 0, 0, 0},
         };
 
         if (argc == 1){ print_help = 1; }
@@ -240,6 +246,10 @@ int main(int argc, char **argv){
             cout << std::left << setw(30) << "--ingest-intrinsics=[DIR] " << "Load per-camera cali_results.txt and keep K/dist fixed." << endl;
             cout << std::left << setw(30) << "--loss=[STR] " << "Robust loss: trivial (default), huber, or cauchy." << endl;
             cout << std::left << setw(30) << "--loss-scale=[FLOAT] " << "Loss scale parameter in pixels (default: 1.0)." << endl;
+            cout << std::left << setw(30) << "--corner-refine=[STR] " << "Corner refinement: model (default; X-junction fit for ChArUco, L-corner fit for" << endl;
+            cout << std::left << setw(30) << " " << "--april/--aruco, on gamma-linearised intensities, GPU with --use-cuda), subpix (cornerSubPix)," << endl;
+            cout << std::left << setw(30) << " " << "or none (legacy: OpenCV ChArUco interpolation, raw tag-detector corners)." << endl;
+            cout << std::left << setw(30) << "--gamma=[FLOAT] " << "Camera encoding gamma undone before the model fit (default 2.2; 1 = linear sensor)." << endl;
 
             cout << "All other arguments are ignored." << endl;
             cout << endl << endl;
@@ -369,6 +379,12 @@ int main(int argc, char **argv){
             loss_scale = FromString<float>(optarg);
             cli_set_loss_scale = true;
             break;
+        case 1001:
+            corner_refine_str = optarg;
+            break;
+        case 1002:
+            gamma_value = FromString<double>(optarg);
+            break;
 
         default:{
             cout << "Argument not found " << optarg << endl;
@@ -400,6 +416,8 @@ int main(int argc, char **argv){
     string cli_ingest_intrinsics_dir = ingest_intrinsics_dir;
     string cli_loss_type = loss_type;
     float cli_loss_scale = loss_scale;
+    string cli_corner_refine_str = corner_refine_str;
+    double cli_gamma_value = gamma_value;
     string cli_camera_color_str = camera_color_str;
     string cli_pattern_color_str = pattern_color_str;
     string cli_camera_names_str = camera_names_str;
@@ -489,6 +507,9 @@ int main(int argc, char **argv){
                 } else if (key == "use-cuda" || key == "use_cuda") { if (ival) use_cuda = 1;
                 } else if (key == "ingest-intrinsics" || key == "ingest_intrinsics") {
                     if (!val_str.empty()) ingest_intrinsics_dir = val_str;
+                } else if (key == "corner-refine" || key == "corner_refine") {
+                    if (!val_str.empty()) corner_refine_str = val_str;
+                } else if (key == "gamma") { if (fval > 0) gamma_value = fval;
                 }
             }
             cfg.close();
@@ -530,7 +551,22 @@ int main(int argc, char **argv){
     if (!cli_ingest_intrinsics_dir.empty()) ingest_intrinsics_dir = cli_ingest_intrinsics_dir;
     if (cli_set_loss) loss_type = cli_loss_type;
     if (cli_set_loss_scale) loss_scale = cli_loss_scale;
+    if (!cli_corner_refine_str.empty()) corner_refine_str = cli_corner_refine_str;
+    if (cli_gamma_value > 0) gamma_value = cli_gamma_value;
     omp_set_num_threads(number_threads);
+
+    if (!corner_refine_str.empty() &&
+            !calico_refine::ParseMode(corner_refine_str, &calico_refine::Config().mode)) {
+        cerr << "Invalid --corner-refine='" << corner_refine_str
+             << "'. Expected model, subpix, or none." << endl;
+        exit(1);
+    }
+    if (gamma_value > 0) {
+        calico_refine::Config().gamma = gamma_value;
+    } else if (gamma_value != -1) {
+        cerr << "Invalid --gamma (must be > 0)." << endl;
+        exit(1);
+    }
 
     // --max-images is a unified cap across internal/external reads when those are unset.
     if (max_images > 0) {
@@ -577,6 +613,10 @@ int main(int argc, char **argv){
 
     g_num_threads = number_threads;
     g_use_cuda = opts.use_cuda ? 1 : 0;
+    calico_refine::Config().use_gpu = opts.use_cuda && calico_cuda::CompiledWithCuda() && calico_cuda::GpuAvailable();
+    cout << "Corner refinement: " << calico_refine::ModeName(calico_refine::Config().mode)
+         << " (gamma " << calico_refine::Config().gamma << ", "
+         << (calico_refine::Config().use_gpu ? "GPU" : "CPU") << ")" << endl;
     if (opts.use_cuda) {
         cout << "CUDA requested. Built with CUDA=" << (calico_cuda::CompiledWithCuda() ? "yes" : "no")
              << ", GPU available=" << (calico_cuda::GpuAvailable() ? "yes" : "no");
@@ -1066,6 +1106,8 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
         }
     }
 
+    calico_refine::PrintStats(cout);
+
     // --detection-summary: print board visibility per camera
     if (options.detection_summary) {
         PrintDetectionSummary(CCV, camera_directories, P_Class->pp.numberBoards);
@@ -1452,6 +1494,8 @@ void MultipleCameraCalibration(const string& input_dir, const string& output_dir
         json_out << "  \"duration_sec\": " << total_sec << "," << endl;
         json_out << "  \"opencv\": \"" << CV_MAJOR_VERSION << "." << CV_MINOR_VERSION << "." << CV_SUBMINOR_VERSION << "\"," << endl;
         json_out << "  \"cuda\": " << (g_use_cuda ? "true" : "false") << "," << endl;
+        json_out << "  \"corner_refine\": \"" << calico_refine::ModeName(calico_refine::Config().mode) << "\"," << endl;
+        json_out << "  \"gamma\": " << calico_refine::Config().gamma << "," << endl;
         json_out << "  \"pattern\": \""
                  << (is_charuco ? "charuco" : (is_aruco ? "aruco" : "april")) << "\"," << endl;
         json_out << "  \"cameras\": [" << endl;
