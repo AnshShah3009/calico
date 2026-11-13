@@ -198,6 +198,50 @@ target_compile_options(${CALICO_EXE} PRIVATE ${my_USUAL_FLAGS})
 
 target_link_libraries(${CALICO_EXE} ${CERES_LIBRARIES} Eigen3::Eigen gomp ${OpenCV_LIBS} ${apriltags_LIBRARIES} ${apriltag_LIBRARIES} glog gflags ${CALICO_CUDA_LIBS})
 
+################# robocal (robot / camera joint calibration) #########
+
+# Optional: needs yaml-cpp (configs, samples, outputs) and tinyxml2 (URDF).
+find_package(yaml-cpp QUIET)
+find_package(tinyxml2 QUIET)
+if(NOT tinyxml2_FOUND)
+    pkg_search_module(TINYXML2 QUIET tinyxml2)
+endif()
+set(ROBOCAL_ENABLED FALSE)
+if(yaml-cpp_FOUND AND (tinyxml2_FOUND OR TINYXML2_FOUND))
+    set(ROBOCAL_ENABLED TRUE)
+endif()
+if(ROBOCAL_ENABLED)
+    if(TARGET yaml-cpp::yaml-cpp)
+        set(ROBOCAL_YAML yaml-cpp::yaml-cpp)
+    else()
+        set(ROBOCAL_YAML yaml-cpp)
+    endif()
+    if(TARGET tinyxml2::tinyxml2)
+        set(ROBOCAL_XML tinyxml2::tinyxml2)
+    else()
+        set(ROBOCAL_XML ${TINYXML2_LIBRARIES})
+        include_directories(${TINYXML2_INCLUDE_DIRS})
+    endif()
+    add_library(robocal STATIC robocal/robocal.cpp robocal/stage1_solver.cpp robocal/urdf_chain.cpp robocal/detect.cpp robocal/focus.cpp)
+    target_include_directories(robocal PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/robocal ${CERES_INCLUDE_DIRS}
+        ${apriltag_INCLUDE_DIRS})
+    target_compile_features(robocal PUBLIC cxx_std_17)
+    target_compile_options(robocal PRIVATE -Wall -Wextra -O3 -fopenmp)
+    target_link_libraries(robocal PUBLIC ${CERES_LIBRARIES} Eigen3::Eigen ${OpenCV_LIBS}
+        ${apriltags_LIBRARIES} ${apriltag_LIBRARIES} gomp ${ROBOCAL_YAML} ${ROBOCAL_XML})
+
+    add_executable(calico-robocal robocal/robocal_main.cpp)
+    target_link_libraries(calico-robocal robocal)
+    install(TARGETS calico-robocal DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
+    add_executable(calico-focus robocal/focus_main.cpp)
+    target_link_libraries(calico-focus robocal)
+    install(TARGETS calico-focus DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
+
+    message(STATUS "robocal enabled (yaml-cpp + tinyxml2 found)")
+else()
+    message(STATUS "robocal disabled: needs yaml-cpp and tinyxml2 (apt: libyaml-cpp-dev libtinyxml2-dev)")
+endif()
+
 ################ installs #############################
 
 install(TARGETS ${CALICO_EXE} DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
