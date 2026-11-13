@@ -68,6 +68,8 @@ COPY --from=builder /calico/build/calico_tests /usr/local/bin/calico_tests
 COPY --from=builder /calico/build/calico-robocal /usr/local/bin/calico-robocal
 COPY --from=builder /calico/build/calico-focus /usr/local/bin/calico-focus
 COPY --from=builder /calico/build/robocal_tests /usr/local/bin/robocal_tests
+COPY --from=builder /calico/build/calico-robocal-sim /usr/local/bin/calico-robocal-sim
+COPY --from=builder /calico/build/robocal_render_tests /usr/local/bin/robocal_render_tests
 COPY src/detector_params.yml /opt/calico/detector_params.yml
 COPY src/detector_params.yml /src/detector_params.yml
 RUN ldconfig
