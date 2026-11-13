@@ -234,8 +234,12 @@ int main(int argc, char** argv) {
         for (const std::string& ci : cal.WriteCameraInfos(out)) std::cout << "wrote " << ci << std::endl;
         cal.WriteResiduals(out + "/residuals.csv");
         if (!cal.config().arms.empty()) {
-            cal.WriteCalibratedUrdf(out + "/calibrated_cell" + tag + ".urdf");
-            std::cout << "wrote " << out << "/calibrated_cell" << tag << ".urdf" << std::endl;
+            try {  // the calibration itself is already written: an export problem must not fail the run
+                cal.WriteCalibratedUrdf(out + "/calibrated_cell" + tag + ".urdf");
+                std::cout << "wrote " << out << "/calibrated_cell" << tag << ".urdf" << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "calico-robocal: warning: calibrated URDF not written: " << e.what() << std::endl;
+            }
         }
         if (failed) {
             std::cerr << "calico-robocal: robot solve FAILED its sanity gate: " << cal.diagnostics().fail_reason << std::endl;

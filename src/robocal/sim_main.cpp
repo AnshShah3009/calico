@@ -2218,6 +2218,7 @@ int Video(const std::string& dir, const std::string& out, const std::string& not
             while (std::getline(in, line)) {
                 if (line.find_first_not_of(" \t\r") == std::string::npos) continue;
                 const YAML::Node n = YAML::Load(line);
+                if (n["cache_meta"]) continue;  // signature line
                 const std::string img = n["image"].as<std::string>();
                 const std::string key = img.substr(img.find_last_of('/') + 1);
                 for (const auto& p : n["pts"]) det_pts[key].push_back(Vec2(p[0].as<double>(), p[1].as<double>()));

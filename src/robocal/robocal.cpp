@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
@@ -648,6 +649,13 @@ Config Config::Load(const std::string& path) {
         }
         if (b["fit_shape"]) spec.fit_shape = b["fit_shape"].as<bool>();
         if (b["fit_scale"]) spec.fit_scale = b["fit_scale"].as<bool>();
+        if (spec.fit_scale && !spec.fit_shape) {
+            // The x / y scale lives in the board shape block, which is only free with fit_shape:
+            // without this, fit_scale alone would silently hold the scale at print_scale_pct.
+            std::cout << "[robocal] board " << spec.name << ": fit_scale needs the shape block, fit_shape enabled "
+                      << "(bow / twist with their prior shape_sigma_mm)" << std::endl;
+            spec.fit_shape = true;
+        }
         if (b["fit_points"]) spec.fit_points = b["fit_points"].as<bool>();
         if (b["point_sigma_mm"]) spec.point_sigma_m = b["point_sigma_mm"].as<double>() * 1e-3;
         if (b["fit_warp"]) spec.fit_warp = b["fit_warp"].as<bool>();
@@ -867,6 +875,16 @@ void RobotCalibrator::Load() {
         s.world_base = PoseParam::FromIso(a.T_world_base);
         arms_.push_back(s);
     }
+    if (cfg_.drive.model && cfg_.drive.shared) {
+        // One drive block (arm 0's) serves every arm: the arms must have the same joints.
+        for (const ArmState& a : arms_) {
+            if (a.chain.dof() != arms_[0].chain.dof()) {
+                throw std::runtime_error("drive.shared: true needs arms with the same number of joints (" +
+                                         std::to_string(arms_[0].chain.dof()) + " vs " + std::to_string(a.chain.dof()) +
+                                         "); set drive.shared: false");
+            }
+        }
+    }
     views_.clear();
     for (size_t i = 0; i < cfg_.arms.size(); ++i) {
         if (!cfg_.arms[i].samples.empty()) LoadSamples(static_cast<int>(i), cfg_.arms[i].samples);
@@ -940,9 +958,14 @@ void RobotCalibrator::FilterReliableTags(bool erase) {
             }
             tags = n_keep >= cfg_.detect.min_points_per_board ? std::max(1, cfg_.detect.min_tags_per_board) : 0;
         }
+        // Guided corners sit at the end of the view (n_guided of them); the order is kept, so the
+        // survivors among them stay at the end.
+        const size_t first_guided = v.img.size() - std::min(v.img.size(), static_cast<size_t>(std::max(0, v.n_guided)));
+        int guided_kept = 0;
         size_t n = 0;
         for (size_t i = 0; i < v.img.size(); ++i) {
             if (!keep[i]) continue;
+            if (i >= first_guided) ++guided_kept;
             v.img[n] = v.img[i];
             v.obj[n] = v.obj[i];
             if (i < v.pids.size()) v.pids[n] = v.pids[i];
@@ -951,6 +974,8 @@ void RobotCalibrator::FilterReliableTags(bool erase) {
         v.img.resize(n);
         v.obj.resize(n);
         if (v.pids.size() > n) v.pids.resize(n);
+        v.n_guided = guided_kept;
+        v.pw.clear();
         if (tags < std::max(1, cfg_.detect.min_tags_per_board)) {
             v.dropped = true;
             continue;
@@ -1109,15 +1134,46 @@ void RobotCalibrator::LoadFrames(const std::string& path) {
     };
     std::vector<std::vector<Det>> dets(jobs.size());
     const std::string& cache = cfg_.detections_cache;
+    // Cache signature: the frame images in order, the boards and the detector settings. A cache
+    // written for anything else (frames added / removed, boards or detection options changed) is
+    // refused instead of silently leaving frames without detections.
+    const std::string signature = [&] {
+        std::ostringstream o;
+        o << std::setprecision(10) << "frames " << jobs.size() << "\n";
+        for (const Job& j : jobs) o << j.image << "\n";
+        for (const BoardSpec& b : cfg_.boards) {
+            o << "board " << b.name << " " << static_cast<int>(b.type) << " " << b.family << " " << b.rows << " " << b.cols
+              << " " << b.tag_size << " " << b.tag_spacing << " " << b.first_id << " " << b.square_size << " " << b.marker_size
+              << " " << b.legacy << "\n";
+        }
+        const DetectOptions& d = cfg_.detect;
+        o << "detect " << d.subpixel << " " << d.min_tags_per_board << " " << d.min_points_per_board << " "
+          << d.max_subpixel_move << " " << d.apriltag << " " << d.refine << " " << d.gamma << " " << d.check_spacers << "\n";
+        uint64_t h = 1469598103934665603ULL;  // FNV-1a
+        for (unsigned char ch : o.str()) h = (h ^ ch) * 1099511628211ULL;
+        std::ostringstream hex;
+        hex << std::hex << std::setw(16) << std::setfill('0') << h;
+        return hex.str();
+    }();
     bool from_cache = false;
     if (!cache.empty()) {
         std::ifstream in(cache);
         if (in) {
             from_cache = true;
+            bool signed_cache = false;
             std::string line;
             while (std::getline(in, line)) {
                 if (line.find_first_not_of(" \t\r") == std::string::npos) continue;
                 const YAML::Node n = YAML::Load(line);
+                if (n["cache_meta"]) {
+                    const std::string sig = n["cache_meta"]["signature"].as<std::string>();
+                    if (sig != signature) {
+                        throw std::runtime_error("detections cache " + cache +
+                                                 " was written for other frames, boards or detection settings (delete it)");
+                    }
+                    signed_cache = true;
+                    continue;
+                }
                 const int k = n["frame"].as<int>();
                 if (k < 0 || k >= static_cast<int>(jobs.size()) || n["image"].as<std::string>() != jobs[k].image) {
                     throw std::runtime_error("detections cache " + cache + " does not match the frames (delete it)");
@@ -1146,6 +1202,10 @@ void RobotCalibrator::LoadFrames(const std::string& path) {
                 }
                 dets[k].push_back(d);
             }
+            if (!signed_cache) {
+                std::cout << "[robocal] warning: detections cache " << cache << " has no signature (older calico, or a filtered copy): "
+                          << "frames, boards and detection settings are not checked against it" << std::endl;
+            }
         }
     }
     if (!from_cache) {
@@ -1166,6 +1226,7 @@ void RobotCalibrator::LoadFrames(const std::string& path) {
         if (!cache.empty()) {
             std::ofstream out(cache);
             out << std::setprecision(10);
+            out << "{\"cache_meta\": {\"frames\": " << jobs.size() << ", \"signature\": \"" << signature << "\"}}\n";
             for (size_t k = 0; k < jobs.size(); ++k) {
                 for (const Det& d : dets[k]) {
                     out << "{\"frame\": " << k << ", \"image\": \"" << jobs[k].image << "\", \"board\": \"" << d.board
@@ -1246,47 +1307,11 @@ bool RobotCalibrator::EstimateBoardPose(const View& v, Iso3& T_cam_board, double
             objs.push_back(v.obj[i]);
         }
     }
-    if (bearings.size() < 4) return false;
-    Vec3 m = Vec3::Zero();
-    for (const Vec3& b : bearings) m += b;
-    m.normalize();
-    // Virtual camera: z along m. R_cv maps virtual -> camera.
-    Vec3 x = Vec3::UnitY().cross(m);
-    if (x.norm() < 1e-6) x = Vec3::UnitX().cross(m);
-    x.normalize();
-    const Vec3 y = m.cross(x);
-    Mat3 R_cv;
-    R_cv.col(0) = x;
-    R_cv.col(1) = y;
-    R_cv.col(2) = m;
-    std::vector<cv::Point3f> obj_cv;
-    std::vector<cv::Point2f> img_cv;
-    for (size_t i = 0; i < bearings.size(); ++i) {
-        const Vec3 bv = R_cv.transpose() * bearings[i];
-        if (bv.z() < 0.05) continue;
-        obj_cv.emplace_back(static_cast<float>(objs[i].x()), static_cast<float>(objs[i].y()), static_cast<float>(objs[i].z()));
-        img_cv.emplace_back(static_cast<float>(bv.x() / bv.z()), static_cast<float>(bv.y() / bv.z()));
-    }
-    if (obj_cv.size() < 4) return false;
-    std::vector<cv::Mat> rvecs, tvecs;
-    try {
-        cv::solvePnPGeneric(obj_cv, img_cv, cv::Mat::eye(3, 3, CV_64F), cv::noArray(), rvecs, tvecs, false,
-                            cv::SOLVEPNP_IPPE);
-    } catch (const cv::Exception&) {
-        return false;
-    }
+    const std::vector<Iso3> candidates = BoardPoseCandidates(bearings, objs);
+    if (candidates.empty()) return false;
     double best = std::numeric_limits<double>::infinity();
-    for (size_t s = 0; s < rvecs.size(); ++s) {
-        cv::Mat R;
-        cv::Rodrigues(rvecs[s], R);
-        Iso3 T_vb = Iso3::Identity();
-        for (int r = 0; r < 3; ++r) {
-            for (int c = 0; c < 3; ++c) T_vb.linear()(r, c) = R.at<double>(r, c);
-            T_vb.translation()[r] = tvecs[s].at<double>(r);
-        }
-        Iso3 T_cv = Iso3::Identity();
-        T_cv.linear() = R_cv;
-        PoseParam board = PoseParam::FromIso(T_cv * T_vb);
+    for (const Iso3& cand : candidates) {
+        PoseParam board = PoseParam::FromIso(cand);
         PoseParam ident;
         std::vector<double> intr = cam.intr.params;
         ceres::Problem problem;
@@ -1783,6 +1808,7 @@ int RobotCalibrator::GuidedPass(int ci, bool rectified) {
             v.pids = nv.pids;
             v.obj = nv.obj;
             v.img = nv.img;
+            v.n_guided = static_cast<int>(nv.img.size());  // the whole view comes from the guided pass
             v.has_T_cam_board = nv.has_pose;
             v.T_cam_board = nv.T;
             views_.push_back(v);
@@ -1947,8 +1973,16 @@ void RobotCalibrator::RefitHeldOutFrames() {
     }
 }
 
+// Camera pose in the world for one view: arm chain (wrist), the frame's own pose (hand-held /
+// free_views; identity until InitHandheld has reached the frame) or the camera's pose (static).
 Iso3 RobotCalibrator::CameraInWorld(const View& v) const {
-    if (v.arm < 0) return cams_[v.camera].world_cam.ToIso();
+    if (v.arm < 0) {
+        if (cams_[v.camera].handheld) {
+            const auto it = frame_poses_.find(std::make_pair(v.camera, v.frame_idx));
+            return it != frame_poses_.end() ? it->second.ToIso() : Iso3::Identity();
+        }
+        return cams_[v.camera].world_cam.ToIso();
+    }
     const ArmState& a = arms_[v.arm];
     std::vector<double> theta(v.q.size());
     for (size_t i = 0; i < theta.size(); ++i) theta[i] = v.q[i] + a.dq[i];
@@ -2196,6 +2230,8 @@ void RobotCalibrator::Initialize() {
             std::vector<Iso3> est;
             for (const View& v : views_) {
                 if (v.board != kv.first || !v.has_T_cam_board || v.holdout || v.dropped) continue;
+                // hand-held / free_views frames: only those InitHandheld placed via a static board
+                if (v.arm < 0 && cams_[v.camera].handheld && !frames_initialized_.count(std::make_pair(v.camera, v.frame_idx))) continue;
                 est.push_back(MountLinkInWorld(b, v.arm_q.at(b.arm)).inverse() * CameraInWorld(v) * v.T_cam_board);
             }
             if (!est.empty()) b.mount = PoseParam::FromIso(AveragePoses(est));
@@ -2307,7 +2343,8 @@ bool RobotCalibrator::ViewResiduals(const View& v, std::vector<double>& r) const
     r.assign(2 * v.obj.size(), 0.0);
     std::vector<double*> blocks;
     ViewCost c = MakeViewCost(v, &blocks, nullptr);
-    c.weight = 1.0;  // pixels
+    c.weight = 1.0;            // pixels
+    c.corner_weights = false;  // the image error itself: the IRLS weights belong to the solve only
     std::vector<const double*> cb(blocks.begin(), blocks.end());
     return c(cb.data(), r.data());
 }
@@ -2881,10 +2918,11 @@ int RobotCalibrator::UpdateCornerWeights() {
     for (View& v : views_) {
         v.pw.clear();
         if (v.dropped || v.holdout || !ViewResiduals(v, r)) continue;
-        const double unit = pixel_sigma_ * v.sigma_scale;  // ViewResiduals is in units of this
+        // ViewResiduals is in pixels. Threshold huber_px * sigma_scale: the same pixel threshold as
+        // robust: view (Huber huber_px / pixel_sigma on residuals whitened by pixel_sigma * sigma_scale).
         std::vector<double> w(v.obj.size(), 1.0);
         for (size_t i = 0; i < v.obj.size(); ++i) {
-            const double e = std::hypot(r[2 * i], r[2 * i + 1]) * unit;
+            const double e = std::hypot(r[2 * i], r[2 * i + 1]) / v.sigma_scale;
             if (e > cfg_.solver.huber_px) {
                 w[i] = std::sqrt(cfg_.solver.huber_px / e);
                 ++down;
@@ -2922,8 +2960,11 @@ int RobotCalibrator::RejectOutliers() {
         std::vector<Vec3> obj;
         std::vector<Vec2> img;
         std::vector<int> pids;
+        const size_t first_guided = v.obj.size() - std::min(v.obj.size(), static_cast<size_t>(std::max(0, v.n_guided)));
+        int guided_kept = 0;
         for (size_t i = 0; i < v.obj.size(); ++i) {
             if (std::hypot(r[2 * i], r[2 * i + 1]) <= thr) {
+                if (i >= first_guided) ++guided_kept;
                 obj.push_back(v.obj[i]);
                 img.push_back(v.img[i]);
                 if (i < v.pids.size()) pids.push_back(v.pids[i]);
@@ -2934,6 +2975,7 @@ int RobotCalibrator::RejectOutliers() {
         v.obj.swap(obj);
         v.img.swap(img);
         if (!v.pids.empty()) v.pids.swap(pids);  // per-corner heights are indexed by pid
+        v.n_guided = guided_kept;                // guided corners stay at the end, in order
         v.pw.clear();
         if (static_cast<int>(v.obj.size()) < cfg_.solver.min_points_per_view) v.dropped = true;
     }
@@ -3310,40 +3352,74 @@ void RobotCalibrator::WriteCalibratedUrdf(const std::string& path) const {
         j->InsertEndChild(oe);
         robot->InsertEndChild(j);
     };
-    add_link(cfg_.world_frame);
+    // Each distinct URDF is copied once (two arms may share one bimanual URDF); a joint gets the
+    // offset of the arm that lists it. Links the URDFs already define (e.g. the world frame) are
+    // not added again, and an arm base that already has a parent joint from the world frame gets
+    // the calibrated pose on that joint instead of a second parent.
+    auto read3 = [](const char* t, const Vec3& d) {
+        if (t == nullptr) return d;
+        std::istringstream in(t);
+        Vec3 v;
+        in >> v.x() >> v.y() >> v.z();
+        return v;
+    };
+    std::vector<std::unique_ptr<XMLDocument>> srcs;
+    std::map<std::string, int> src_of_key;
+    std::vector<int> arm_src(arms_.size(), -1);
     for (size_t ai = 0; ai < arms_.size(); ++ai) {
         const ArmConfig& ac = cfg_.arms[ai];
-        const ArmState& a = arms_[ai];
-        XMLDocument src;
-        const XMLError err = ac.urdf_xml.empty() ? src.LoadFile(ac.urdf.c_str()) : src.Parse(ac.urdf_xml.c_str());
-        if (err != XML_SUCCESS) throw std::runtime_error("calibrated URDF: cannot read the URDF of arm " + ac.name);
-        const XMLElement* srobot = src.FirstChildElement("robot");
+        const std::string key = ac.urdf_xml.empty() ? "file:" + ac.urdf : "xml:" + ac.urdf_xml;
+        auto it = src_of_key.find(key);
+        if (it == src_of_key.end()) {
+            auto doc = std::make_unique<XMLDocument>();
+            const XMLError err = ac.urdf_xml.empty() ? doc->LoadFile(ac.urdf.c_str()) : doc->Parse(ac.urdf_xml.c_str());
+            if (err != XML_SUCCESS || doc->FirstChildElement("robot") == nullptr) {
+                throw std::runtime_error("calibrated URDF: cannot read the URDF of arm " + ac.name);
+            }
+            it = src_of_key.emplace(key, static_cast<int>(srcs.size())).first;
+            srcs.push_back(std::move(doc));
+        }
+        arm_src[ai] = it->second;
+    }
+    std::map<std::string, std::pair<size_t, size_t>> joint_owner;  // joint -> (arm, index in the arm's chain)
+    for (size_t ai = 0; ai < arms_.size(); ++ai) {
+        for (size_t k = 0; k < cfg_.arms[ai].joints.size(); ++k) joint_owner[cfg_.arms[ai].joints[k]] = {ai, k};
+    }
+    std::set<std::string> src_links;
+    std::map<std::string, XMLElement*> parent_joint;  // child link -> its joint in the output
+    for (const auto& doc : srcs) {
+        const XMLElement* srobot = doc->FirstChildElement("robot");
+        for (const XMLElement* e = srobot->FirstChildElement(); e != nullptr; e = e->NextSiblingElement()) {
+            if (std::string(e->Name()) == "link" && e->Attribute("name")) src_links.insert(e->Attribute("name"));
+        }
+    }
+    if (!src_links.count(cfg_.world_frame)) add_link(cfg_.world_frame);
+    for (const auto& doc : srcs) {
+        const XMLElement* srobot = doc->FirstChildElement("robot");
         for (const XMLElement* e = srobot->FirstChildElement(); e != nullptr; e = e->NextSiblingElement()) {
             const std::string tag = e->Name();
             if (tag == "link") {
                 if (!links.insert(e->Attribute("name")).second) {
-                    throw std::runtime_error(std::string("calibrated URDF: duplicate link ") + e->Attribute("name"));
+                    throw std::runtime_error(std::string("calibrated URDF: link ") + e->Attribute("name") +
+                                             " is defined by two different URDFs");
                 }
             }
             XMLNode* copy = e->DeepClone(&out);
             if (tag == "joint") {
                 XMLElement* j = copy->ToElement();
                 const std::string jn = j->Attribute("name") ? j->Attribute("name") : "";
-                for (size_t k = 0; k < ac.joints.size(); ++k) {
-                    if (ac.joints[k] != jn || a.dq[k] == 0.0) continue;
+                if (const XMLElement* c = j->FirstChildElement("child")) {
+                    if (c->Attribute("link")) parent_joint[c->Attribute("link")] = j;
+                }
+                const auto ow = joint_owner.find(jn);
+                if (ow != joint_owner.end() && arms_[ow->second.first].dq[ow->second.second] != 0.0) {
+                    const double dq = arms_[ow->second.first].dq[ow->second.second];
                     // origin * Rot(axis, q + dq) == (origin * Rot(axis, dq)) * Rot(axis, q)
                     XMLElement* o = j->FirstChildElement("origin");
                     if (o == nullptr) {
                         o = out.NewElement("origin");
                         j->InsertFirstChild(o);
                     }
-                    auto read3 = [](const char* t, const Vec3& d) {
-                        if (t == nullptr) return d;
-                        std::istringstream in(t);
-                        Vec3 v;
-                        in >> v.x() >> v.y() >> v.z();
-                        return v;
-                    };
                     const Vec3 xyz = read3(o->Attribute("xyz"), Vec3::Zero());
                     const Vec3 rpy = read3(o->Attribute("rpy"), Vec3::Zero());
                     const XMLElement* ax = j->FirstChildElement("axis");
@@ -3351,15 +3427,38 @@ void RobotCalibrator::WriteCalibratedUrdf(const std::string& path) const {
                     const std::string type = j->Attribute("type") ? j->Attribute("type") : "";
                     Vec3 nxyz = xyz;
                     Mat3 R = RpyToRotation(rpy);
-                    if (type == "prismatic") nxyz = xyz + R * axis * a.dq[k];
-                    else R = R * Eigen::AngleAxisd(a.dq[k], axis).toRotationMatrix();
+                    if (type == "prismatic") nxyz = xyz + R * axis * dq;
+                    else R = R * Eigen::AngleAxisd(dq, axis).toRotationMatrix();
                     o->SetAttribute("xyz", fmt3(nxyz).c_str());
                     o->SetAttribute("rpy", fmt3(RotationToRpy(R)).c_str());
                 }
             }
             robot->InsertEndChild(copy);
         }
-        add_fixed(cfg_.world_frame + "_to_" + ac.base_link, cfg_.world_frame, ac.base_link, a.world_base.ToIso());
+    }
+    for (size_t ai = 0; ai < arms_.size(); ++ai) {
+        const ArmConfig& ac = cfg_.arms[ai];
+        const ArmState& a = arms_[ai];
+        const auto pj = parent_joint.find(ac.base_link);
+        if (pj == parent_joint.end()) {
+            add_fixed(cfg_.world_frame + "_to_" + ac.base_link, cfg_.world_frame, ac.base_link, a.world_base.ToIso());
+        } else {
+            XMLElement* j = pj->second;
+            const XMLElement* pe = j->FirstChildElement("parent");
+            const std::string parent = pe && pe->Attribute("link") ? pe->Attribute("link") : "";
+            const std::string type = j->Attribute("type") ? j->Attribute("type") : "";
+            if (parent != cfg_.world_frame || type != "fixed") {
+                throw std::runtime_error("calibrated URDF: " + ac.base_link + " already has parent " + parent + " (" + type +
+                                         " joint) in the URDF; the solved base pose is relative to " + cfg_.world_frame);
+            }
+            XMLElement* o = j->FirstChildElement("origin");
+            if (o == nullptr) {
+                o = out.NewElement("origin");
+                j->InsertFirstChild(o);
+            }
+            o->SetAttribute("xyz", fmt3(a.world_base.ToIso().translation()).c_str());
+            o->SetAttribute("rpy", fmt3(RotationToRpy(a.world_base.ToIso().linear())).c_str());
+        }
         if (a.camera >= 0) {
             const std::string cam = cfg_.cameras[a.camera].name + "_optical_frame";
             add_link(cam);

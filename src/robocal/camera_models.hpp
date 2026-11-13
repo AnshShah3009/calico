@@ -230,6 +230,9 @@ inline bool UnprojectPixel(LensModel model, const double* p, const Eigen::Vector
         uy = yd;
     }
     // kb4_pupil: the bearing of the ray; it starts at (0, 0, PupilOffset(theta)), not at the origin.
+    // The direction (and so the off-axis angle) is exact; callers that treat it as a ray through the
+    // origin (the PnP initialisation) are off by the pupil shift only until the pose is refined
+    // through ProjectPoint, which models the pupil.
     if (IsKannalaBrandt(model)) {
         const double mx = ux, my = uy;
         const double rd = std::hypot(mx, my);

@@ -71,6 +71,7 @@ struct ViewCost {
     Iso3 T_tip_link = Iso3::Identity();      // URDF fixed transform tip -> mount link
     BoardGeometry geom;
     double weight = 1.0;  // 1 / pixel noise sigma: residuals in units of the detection noise
+    bool corner_weights = true;  // apply View.pw (solve); false: plain residuals (reports, outlier tests)
 
     template <typename T>
     bool operator()(T const* const* p, T* r) const {
@@ -153,7 +154,7 @@ struct ViewCost {
             const V3T<T> Xc = Rco * X + tco;
             T uv[2];
             if (!ProjectPoint(model, intr, Xc, uv)) return false;
-            const double wi = i < view->pw.size() ? weight * view->pw[i] : weight;
+            const double wi = corner_weights && i < view->pw.size() ? weight * view->pw[i] : weight;
             r[2 * i] = (uv[0] - T(view->img[i].x())) * T(wi);
             r[2 * i + 1] = (uv[1] - T(view->img[i].y())) * T(wi);
         }

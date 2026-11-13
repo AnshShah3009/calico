@@ -83,6 +83,10 @@ int ArucoDictionaryCode(const std::string& name);
 
 // Linear intensities of an 8-bit frame (undoes the camera's gamma encoding).
 cv::Mat LinearizeGray(const cv::Mat& gray, double gamma);
+// Board pose candidates (T_cam_board) from unit bearings and their board points: the bearings are
+// rotated so their mean lies on the axis of a virtual pinhole (valid at any field angle), then IPPE.
+// Both IPPE solutions, lower virtual-image error first; empty if fewer than 4 usable points.
+std::vector<Iso3> BoardPoseCandidates(const std::vector<Vec3>& bearings, const std::vector<Vec3>& objs);
 // Saddle polarity of board point pid: +1 if the board quadrants (+x, +y) / (-x, -y) are black.
 int SaddlePolarity(const BoardSpec& b, int pid);
 // Printed cell around a saddle (board metres): the unit the X-junction window is sized in.

@@ -810,6 +810,55 @@ std::vector<BoardDetection> RectifiedDetector::DetectGiven(const cv::Mat& gray_i
 }
 
 cv::Mat LinearizeGray(const cv::Mat& gray, double gamma) { return Linearize(gray, gamma); }
+
+std::vector<Iso3> BoardPoseCandidates(const std::vector<Vec3>& bearings, const std::vector<Vec3>& objs) {
+    std::vector<Iso3> out;
+    if (bearings.size() < 4 || bearings.size() != objs.size()) return out;
+    Vec3 m = Vec3::Zero();
+    for (const Vec3& b : bearings) m += b;
+    m.normalize();
+    // Virtual camera: z along m. R_cv maps virtual -> camera.
+    Vec3 x = Vec3::UnitY().cross(m);
+    if (x.norm() < 1e-6) x = Vec3::UnitX().cross(m);
+    x.normalize();
+    Mat3 R_cv;
+    R_cv.col(0) = x;
+    R_cv.col(1) = m.cross(x);
+    R_cv.col(2) = m;
+    std::vector<cv::Point3f> o;
+    std::vector<cv::Point2f> p;
+    for (size_t i = 0; i < bearings.size(); ++i) {
+        const Vec3 bv = R_cv.transpose() * bearings[i];
+        if (bv.z() < 0.05) continue;
+        o.emplace_back(static_cast<float>(objs[i].x()), static_cast<float>(objs[i].y()), static_cast<float>(objs[i].z()));
+        p.emplace_back(static_cast<float>(bv.x() / bv.z()), static_cast<float>(bv.y() / bv.z()));
+    }
+    if (o.size() < 4) return out;
+    std::vector<cv::Mat> rv, tv;
+    std::vector<double> err;
+    try {
+        cv::solvePnPGeneric(o, p, cv::Mat::eye(3, 3, CV_64F), cv::noArray(), rv, tv, false, cv::SOLVEPNP_IPPE,
+                            cv::noArray(), cv::noArray(), err);
+    } catch (const cv::Exception&) {
+        return out;
+    }
+    std::vector<size_t> order(rv.size());
+    for (size_t s = 0; s < order.size(); ++s) order[s] = s;
+    if (err.size() == rv.size()) std::sort(order.begin(), order.end(), [&](size_t a, size_t b) { return err[a] < err[b]; });
+    Iso3 T_cv = Iso3::Identity();
+    T_cv.linear() = R_cv;
+    for (size_t s : order) {
+        cv::Mat R;
+        cv::Rodrigues(rv[s], R);
+        Iso3 T_vb = Iso3::Identity();
+        for (int r = 0; r < 3; ++r) {
+            for (int c = 0; c < 3; ++c) T_vb.linear()(r, c) = R.at<double>(r, c);
+            T_vb.translation()[r] = tv[s].at<double>(r);
+        }
+        out.push_back(T_cv * T_vb);
+    }
+    return out;
+}
 int SaddlePolarity(const BoardSpec& b, int pid) { return BlackXYImpl(b, pid); }
 double SaddleModule(const BoardSpec& b) { return SaddleModuleImpl(b); }
 
