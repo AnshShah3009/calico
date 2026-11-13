@@ -5,7 +5,7 @@
 #
 #   tools/robocal_intrinsics_session.sh <session_dir> configs/robocal/sessions/wrist_intrinsics.yaml
 #
-# Boards (recapture spec, notes/WORKFLOW.md section 2): 2 x A4 Kalibr AprilGrid 7 x 10, 20 mm tags,
+# Boards (configs/robocal/README.md, operator checklist): 2 x A4 Kalibr AprilGrid 7 x 10, 20 mm tags,
 # spacing 0.3, tag36h11, ids 100.. and 170.., matte toner print bonded to aluminium composite or
 # glass. Enter the tag size MEASURED with calipers, not the nominal one.
 frames: frames.yaml

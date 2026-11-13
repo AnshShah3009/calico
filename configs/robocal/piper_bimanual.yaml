@@ -23,7 +23,7 @@ drive: {model: true, approach: logged, shared: true}
 # bottom of the print; tag_size = black square; tag_spacing = gap / tag_size). Ids must not
 # overlap between boards of one family. Board poses are estimated (they only must not move).
 boards:
-  # Cell spec (notes/WORKFLOW.md): A2 table 5x7 55 mm (flat, level reference), two A3 side boards
+  # Cell spec (README operator checklist): A2 table 5x7 55 mm (flat, level reference), two A3 side boards
   # 3x4 55 mm tilted ~30 deg toward each arm, A2 back wall 4x6 60 mm. Enter MEASURED tag sizes.
   - {name: table, rows: 5, cols: 7, tag_size: 0.055, tag_spacing: 0.3, first_id: 0, level: true, level_sigma_deg: 0.3}
   - {name: left_wedge, rows: 3, cols: 4, tag_size: 0.055, tag_spacing: 0.3, first_id: 48}
@@ -39,6 +39,11 @@ detection:
   cache: detections.jsonl   # written on the first run, reused afterwards
   subpixel: true            # per-tag cornerSubPix, half window = clip(edge / 10, 3, 9) px
   min_tags_per_board: 2     # a board view needs at least this many tags
+  gamma: 1.0                # AR0234 stream is linear (README: detection.gamma)
+  # Intrinsics are fixed in the robot solve: keep only big tags near the optical axis, where the
+  # lens model and the corner fit are best (0 = off). Real PiPER runs: 40 deg, 35 px.
+  max_theta_deg: 40
+  min_tag_px: 35
 
 arms:
   - name: left
@@ -93,6 +98,7 @@ cameras:
 
 solver:
   huber_px: 1.0
+  # max_rms_px: 6.0  # sanity gate (default 1.5): rigid PiPER without the drive model sits at 3.4-4.7 px
   holdout_every: 5    # every 5th view per camera is held out and scored, never fitted
   outlier_floor_px: 3.0
   outlier_mad_k: 5.0

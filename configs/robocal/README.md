@@ -10,8 +10,7 @@ besides the images, the joints, the URDFs and the board layouts.
 1. **Boards.** Kalibr AprilGrids (tag36h11, 2-bit border, spacer squares), matte, on rigid backing.
    Wrist cameras (13-30 cm): 2 x A4 7x10, 20 mm tags. Center camera (30-150 cm): 2 x A2 7x10, 35 mm
    tags for intrinsics at 0.3-0.8 m (100 mm tags for the 1.5 m focus check). Cell: A2 5x7 55 mm table
-   (flat), 2 x A3 3x4 55 mm side boards, A2 4x6 60 mm back wall. Disjoint id blocks. Full operator
-   walkthrough: `notes/WORKFLOW.md` in the work directory.
+   (flat), 2 x A3 3x4 55 mm side boards, A2 4x6 60 mm back wall. Disjoint id blocks.
 2. **Focus** each camera with `calico-focus` at the harmonic mean of its range; lock the lens; check
    near and far read the same blur.
 3. **Intrinsics** per camera, off the robot (`intrinsics_session.yaml`): move the camera slowly, pause
@@ -146,7 +145,8 @@ visualisations (`tools/robocal_visualize.py`) and `summary.txt`; exit 0 only whe
 With no marker on the robot, J1's zero is indistinguishable from a yaw of that arm's base (or,
 for the gauge arm, of the whole world), and J6's zero from a roll of the wrist camera about the
 J6 axis. Give them a tight prior from the mechanical zero (`delta_q_sigma_deg: [0.5, 20, 20, 20,
-20, 0.5]`, all free): they stay at the prior, their true error goes into the base yaw / camera
+20, 0.5]`, all free; or hold them at the mechanical zero with `delta_q_free: [false, true, true,
+true, true, false]`, which is also the default when `delta_q_free` is omitted): they stay at the prior, their true error goes into the base yaw / camera
 roll, and everything relative (camera to boards, camera to camera, arm to arm, gripper
 position) is unaffected. What remains is the gripper's roll about J6 and the arm's yaw against
 the physical base housing, both bounded by the mechanical knowledge. A marker on the gripper
@@ -215,7 +215,13 @@ discrete -- a camera mount wrong by 180 deg in CAD -- which no continuous search
 data-driven mount start (`mount_init: auto`) fixes it, and the sanity gate catches anything
 similar: a robot solve whose training RMS stays above `max_rms_px` is written as
 `robot_calib.FAILED.yaml` / `calibrated_cell.FAILED.urdf` and exits with code 4 (code 3: intrinsics
-gates failed).
+gates failed). The default 1.5 px suits arms whose joints repeat to ~0.01 deg; hobby-grade arms
+without a drive model (backlash, compliance) stay at several px: the real PiPER teach-mode runs
+reach 3.4-4.7 px at the wrist cameras, so raise the gate for them instead of trusting a FAILED file.
+
+Reported errors (RMS, p95, `residuals.csv`, lens reports, outlier and sanity tests) are the plain
+image errors. `solver.robust: corner` (default) down-weights corners beyond `huber_px` (scaled by
+the view's noise factor) during the solve only; those weights never enter what is reported.
 
 ## Capture timing
 
@@ -280,7 +286,8 @@ frame only after the reported joints have been stationary for a while, and log t
   other board types get the angle test per point. With intrinsics fixed, off-axis and small-tag
   errors would go straight into the joint offsets and mounts. Real whole-system run (fullbody_01,
   76 captures, `max_theta_deg: 40`, `min_tag_px: 35`): kept 8.4 k / 27.7 k corners (left),
-  7.3 k / 23.1 k (right), 1.2 k / 14.1 k (centre); 1.13 / 1.21 / 0.16 px RMS.
+  7.3 k / 23.1 k (right), 1.2 k / 14.1 k (centre); training RMS 3.87 / 4.68 / 0.16 px
+  (p95 7.1 / 8.3 / 0.27): a rigid arm model without backlash; set `solver.max_rms_px` above that.
 - **Cameras** have a `mode`: `wrist` (on an arm's `camera:`), `static` (one pose for the run),
   `free_views` (one free pose per board view: boards moved independently) or
   `handheld` (one free pose per frame; with no arms the world frame is `reference_board`, else the
@@ -297,7 +304,8 @@ frame only after the reported joints have been stationary for a while, and log t
   - `print_scale_pct: [x, y]`: the measured scale of this sheet in % (outer tag-edge extent with a
     steel rule, (measured / nominal - 1) * 100). Used as the value (held) or, with `fit_scale`, as
     the prior centre. Default [0, 0].
-  - `fit_scale: true`: x / y scale free (prior `scale_sigma_pct`, 1 %). On the real loose-sheet
+  - `fit_scale: true`: x / y scale free (prior `scale_sigma_pct`, 1 %); turns on `fit_shape` too
+    (the scale is part of the shape block). On the real loose-sheet
     session hold-out 0.317 -> 0.150 px and fx/fy 1.0047 -> 1.0001.
   - What reaches the lens is only the **anisotropy** (x vs y). In stage 1 (`free_views` /
     `handheld`) a sheet's overall size is absorbed by the view distances: holding only the fitted
