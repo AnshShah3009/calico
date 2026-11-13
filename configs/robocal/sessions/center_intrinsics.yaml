@@ -1,0 +1,38 @@
+# Stage 1 (intrinsics) for the CENTER camera (AR0234 + 200 deg M12, working range 0.30-1.50 m).
+#
+#   tools/robocal_intrinsics_session.sh <session_dir> configs/robocal/sessions/center_intrinsics.yaml
+#
+# Boards: 2 x A2 Kalibr AprilGrid 7 x 10, 35 mm tags, spacing 0.3, ids 300.. and 370.., rigid
+# backing; capture at 0.30-0.80 m. Far focus check only: A2 3 x 4, 100 mm tags, ids 450.. (board c).
+frames: frames.yaml
+reference_board: a
+boards:
+  - {name: a, rows: 7, cols: 10, tag_size: 0.035, tag_spacing: 0.3, first_id: 300, fit_shape: true}
+  - {name: b, rows: 7, cols: 10, tag_size: 0.035, tag_spacing: 0.3, first_id: 370, fit_shape: true}
+  - {name: c, rows: 3, cols: 4, tag_size: 0.100, tag_spacing: 0.3, first_id: 450, fit_shape: true}
+
+cameras:
+  - name: cam
+    mode: free_views
+    model: kb4_pupil            # KB4 + entrance pupil moving along the axis (non-central); measured on
+                                # both wrist lenses (e1 1.2-1.4 mm). A central model costs ~0.7 mm at the
+                                # gripper in simulation. auto / equidistant only for comparison.
+    export_distance_m: 0.50     # the central .equidistant.yaml (for ROS-only tools) is fitted here
+    width: 1920                 # full AR0234 sensor, 1920 x 1200 (the stream mode used in operation)
+    height: 1200
+    f_init: 640
+    intrinsics_prepass: true
+    optimize_intrinsics: true
+
+focus: {near_m: 0.30, far_m: 1.50, max_off_axis_deg: 35}     # harmonic mean 0.50 m
+
+detection: {cache: detections.jsonl, gamma: 1.0, min_tags_per_board: 2}   # stream is linear: gamma 2.2 drops ~80 % of corners
+
+intrinsics_gates:
+  max_holdout_rms_px: 0.30
+  min_theta_deg: 85
+  min_coverage: 0.9
+  max_curve_sd_px: 0.15
+  max_mean_radial_px: 0.10
+
+solver: {huber_px: 1.0, holdout_every: 5, bootstrap: 10, threads: 16}

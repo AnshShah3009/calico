@@ -139,6 +139,37 @@ CLI overrides config. Hyphenated and underscored keys both work.
 <input>/pattern_square_mm<N>.txt
 ```
 
+## Robot + camera joint calibration (`calico-robocal`)
+
+Offline calibration of arm joint zero offsets (`q_model = q_encoder + delta_q`), intrinsics,
+wrist camera mounts, static cameras, arm bases and boards in one problem, from raw frames + joint
+readings. calico detects the AprilGrids itself (several static boards, any layouts / tag sizes,
+disjoint id blocks), estimates board poses with a fisheye-safe PnP, optionally fits intrinsics
+per camera first, then solves everything jointly. Pre-detected calibration_toolkit samples can be
+imported. Code: `src/robocal/`. Built only when yaml-cpp and tinyxml2 are found
+(`libyaml-cpp-dev libtinyxml2-dev`).
+
+```bash
+calico-robocal --config=configs/robocal/piper_bimanual.yaml --out=<out_dir>
+```
+
+Steps: lens focus first (`calico-focus`, harmonic mean of the working range; focus moves the
+focal length), per-camera intrinsics off the robot (`configs/robocal/intrinsics_session.yaml`,
+gates + `camera_info` export; one command per session with block split-half repeatability:
+`tools/robocal_intrinsics_session.sh <session> configs/robocal/sessions/wrist_intrinsics.yaml`,
+comparison `calico-robocal --compare-intrinsics=a,b` with rotation alignment), then the robot solve with those intrinsics constant (frames taken
+only after the arm was stationary: `still_s` / `capture.min_still_s`). End-to-end simulation:
+`tools/robocal_sim_workflow.sh <sim_dir> <build_dir>` (`calico-robocal-sim focus|generate|evaluate|video`).
+Board print scale: `fit_scale` (stage 1, office prints) and `print_scale_pct: [x, y]` (measured, metric for stage 2);
+`fit_warp` exists but is not recommended. Real AR0234 1920 x 1200 stream: `detection.gamma: 1.0`. Each log line ends with
+`[stage s, t=total s]`; `detection.dump_rounds` + `tools/robocal_rounds.py` show what each guided round added.
+Wide fisheyes: lens model `kb4_pupil` (KB4 + entrance-pupil shift e1, non-central; the stage 1 sessions use it,
+a central `.equidistant.yaml` is exported next to it for ROS tools). Robot solve with fixed intrinsics: keep only
+big tags near the axis with `detection.max_theta_deg` / `detection.min_tag_px` (real runs: 40 deg, 35 px).
+Config format, outputs and diagnostics: `configs/robocal/README.md`. Tests (under `ctest`):
+`robocal_render_tests` (rendered 190 deg fisheye frames, four boards, full pipeline) and
+`robocal_tests` (synthetic correspondences, observability report).
+
 ## Verification & 3D Visualization
 
 ### Synthetic MuJoCo Ground-Truth Verification

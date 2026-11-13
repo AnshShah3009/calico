@@ -1,0 +1,62 @@
+# Stage 1: intrinsics of one wide-angle camera, off the robot.
+# Either the camera is moved over static boards, or the board(s) are moved in front of the
+# camera. calico detects the tags, fits the lens with the boards' shape, scores held-out frames
+# with their pose refitted alone, bootstraps the lens curve, applies the gates and writes
+# <out>/<camera>.camera_info.yaml -- which stage 2 (the robot solve) loads with the intrinsics
+# held constant.
+#
+#   calico-robocal --config=configs/robocal/intrinsics_session.yaml --out=<out_dir>
+#
+# Before this session: set and lock the lens focus (focus changes the focal length):
+#   calico-focus --config=configs/robocal/intrinsics_session.yaml --device=<v4l2 index|path>
+#   (or --images=<dir> of frames grabbed while turning the lens; see focus: below)
+
+# One entry per image: {camera: left, image: raw_images/left_001_00000.png}
+frames: <SESSION>/frames.yaml
+
+boards:
+  # Kalibr AprilGrid layout; ids must not overlap between boards. Mount on a rigid, flat backing.
+  - {name: a, rows: 6, cols: 8, tag_size: 0.024, tag_spacing: 0.3, first_id: 0,  fit_shape: true}
+  - {name: b, rows: 6, cols: 8, tag_size: 0.024, tag_spacing: 0.3, first_id: 48, fit_shape: true}
+  # fit_scale: true also estimates x / y print scale (prior scale_sigma_pct: 1)
+
+cameras:
+  # mode: handheld   - the camera moves over static boards, or one rigid board set moves
+  # mode: free_views - boards moved independently of each other (one pose per board view)
+  - name: left
+    mode: handheld
+    model: kb4_pupil            # KB4 k1..k4 + entrance-pupil shift e1 (non-central), valid past 90 deg;
+                                # also written: <cam>.camera_info.equidistant.yaml (central, export_distance_m)
+    width: 1920                 # AR0234: 1920 x 1200, 3 um pixels
+    height: 1200
+    f_init: 640                 # rough focal length (px): EFL / pixel pitch (2.0 mm / 3 um ~ 667)
+    intrinsics_prepass: true
+    optimize_intrinsics: true
+
+reference_board: a              # world frame of the session (any board)
+
+# Focus (calico-focus only): the lens is focused at the harmonic mean of the working range,
+# 2 near far / (near + far): that minimises the worst defocus blur over the range (equal blur at
+# both ends). Wrist cameras 0.13-0.30 m -> 0.181 m; the center camera 0.30-1.50 m -> 0.50 m
+# (A2 7x10 35 mm boards; 100 mm tags for the 1.5 m check). Ready-made per-camera configs and a
+# one-command run: configs/robocal/sessions/, tools/robocal_intrinsics_session.sh.
+focus: {near_m: 0.13, far_m: 0.30, max_off_axis_deg: 35}
+
+detection:
+  cache: detections.jsonl       # written on the first run, reused afterwards
+  subpixel: true
+  gamma: 1.0                    # AR0234 stream is linear; 2.2 rejects ~80 % of corners on dark frames
+  min_tags_per_board: 2
+
+intrinsics_gates:               # <= 0 disables a gate
+  max_holdout_rms_px: 0.5       # per point, held-out frames with their pose refitted alone
+  min_theta_deg: 85             # a ~200 deg lens on 1920 x 1200 reaches ~97 deg in the corners
+  min_coverage: 0.8             # image cells (16 x 9, inside 95 deg) with corners
+  max_curve_sd_px: 0.3          # bootstrap spread of the lens curve
+  max_mean_radial_px: 0.15      # radial bias in any off-axis bin with >= 50 corners
+
+solver:
+  huber_px: 1.0
+  holdout_every: 5              # every 5th frame is held out
+  bootstrap: 10
+  threads: 8
