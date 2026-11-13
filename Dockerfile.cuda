@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     libtbb2 libtbb-dev libjpeg-dev libpng-dev libtiff-dev \
     libeigen3-dev liblapack-dev libatlas-base-dev libgomp1 \
     libgoogle-glog-dev libgflags-dev libsuitesparse-dev libv4l-dev \
+    libyaml-cpp-dev libtinyxml2-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
@@ -57,12 +58,16 @@ FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 RUN apt-get update && apt-get install -y \
     libgtk2.0-0 libtbb2 libgoogle-glog0v5 libsuitesparseconfig5 \
     libcholmod3 liblapack3 libblas3 libatlas3-base libgomp1 \
+    libyaml-cpp0.7 libtinyxml2-9 \
     libpng16-16 libjpeg-turbo8 libtiff5 libwebp7 libopenjp2-7 \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /usr/local /usr/local
 COPY --from=builder /calico/build/calico-dec2023 /usr/local/bin/calico-dec2023
 COPY --from=builder /calico/build/compute-dec2023 /usr/local/bin/compute-dec2023
 COPY --from=builder /calico/build/calico_tests /usr/local/bin/calico_tests
+COPY --from=builder /calico/build/calico-robocal /usr/local/bin/calico-robocal
+COPY --from=builder /calico/build/calico-focus /usr/local/bin/calico-focus
+COPY --from=builder /calico/build/robocal_tests /usr/local/bin/robocal_tests
 COPY src/detector_params.yml /opt/calico/detector_params.yml
 COPY src/detector_params.yml /src/detector_params.yml
 RUN ldconfig
