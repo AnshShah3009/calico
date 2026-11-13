@@ -40,8 +40,14 @@ def load_camera_info(path):
     return d["distortion_model"], [k[0], k[4], k[2], k[5]] + list(d["d"]), d["width"], d["height"]
 
 
-def project(model, p, X):
-    """Wide-angle models of calico (equidistant, kb_rt, double_sphere)."""
+def project(model, p, X, direction=False):
+    """Wide-angle models of calico (equidistant, kb_rt, double_sphere, kb4_pupil).
+
+    kb4_pupil is non-central: a 3D point X is seen along the ray from the pupil at (0, 0, z0(theta)),
+    z0 = e1 (theta / 90 deg)^2, so theta = atan2(rho, z - z0(theta)) (fixed point, as in calico).
+    direction=True projects X as a direction (a point at infinity): the pupil shift drops out.
+    The angle rings drawn here are directions; corners and residuals come from calico's residuals.csv.
+    """
     x, y, z = X
     fx, fy, cx, cy = p[:4]
     d = p[4:]
@@ -54,6 +60,10 @@ def project(model, p, X):
         return fx * x / den + cx, fy * y / den + cy
     rho = math.hypot(x, y)
     th = math.atan2(rho, z)
+    if model == "kb4_pupil" and not direction and rho > 1e-12:
+        kq = 4.0 / (math.pi * math.pi)
+        for _ in range(6):
+            th = math.atan2(rho, z - d[4] * kq * th * th)
     t2 = th * th
     thd = th * (1 + t2 * (d[0] + t2 * (d[1] + t2 * (d[2] + t2 * d[3]))))
     s = thd / rho if rho > 1e-12 else 1.0 / z
@@ -69,7 +79,7 @@ def ring(model, p, theta_deg, n=360):
     for k in range(n + 1):
         ph = 2 * math.pi * k / n
         t = math.radians(theta_deg)
-        pts.append(project(model, p, (math.sin(t) * math.cos(ph), math.sin(t) * math.sin(ph), math.cos(t))))
+        pts.append(project(model, p, (math.sin(t) * math.cos(ph), math.sin(t) * math.sin(ph), math.cos(t)), direction=True))
     return np.array(pts, np.int32)
 
 

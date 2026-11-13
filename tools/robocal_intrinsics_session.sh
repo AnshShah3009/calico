@@ -113,7 +113,10 @@ if os.path.exists("detections.jsonl"):
             for line in f:
                 if not line.strip():
                     continue
-                k = json.loads(line)["frame"]
+                d = json.loads(line)
+                if "cache_meta" in d:   # signature of the full frame list: not valid for a part
+                    continue
+                k = d["frame"]
                 if full[k] in idx:
                     o.write(line.replace('{"frame": %d,' % k, '{"frame": %d,' % idx[full[k]], 1))
         os.replace(out + ".tmp", out)
@@ -133,7 +136,14 @@ t, part, model, med, thr = sys.argv[1:]
 s = open(t).read()
 if part in ("_near", "_far"):   # same frames and detections, views filtered by board distance
     rng = f"[0.0, {med}]" if part == "_near" else f"[{med}, 100.0]"
-    s = re.sub(r"(?m)^solver: *\{", f"solver: {{view_distance_m: {rng}, ", s)
+    if re.search(r"(?m)^solver: *\{", s):                 # flow style: solver: {a: 1, ...}
+        s = re.sub(r"(?m)^solver: *\{", f"solver: {{view_distance_m: {rng}, ", s, count=1)
+    elif re.search(r"(?m)^solver: *(#.*)?$", s):           # block style: solver:\n  a: 1
+        s = re.sub(r"(?m)^solver: *(#.*)?$", f"solver:\n  view_distance_m: {rng}", s, count=1)
+    else:
+        s += f"\nsolver: {{view_distance_m: {rng}}}\n"
+    if "view_distance_m" not in s:
+        sys.exit(f"{part}: could not add solver.view_distance_m to the template")
 else:
     s = re.sub(r"(?m)^frames: .*$", f"frames: frames{part}.yaml", s)
     s = s.replace("cache: detections.jsonl", f"cache: detections{part}.jsonl")
