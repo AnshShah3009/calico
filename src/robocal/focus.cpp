@@ -24,8 +24,7 @@ double Median(std::vector<double> v) {
     return v[v.size() / 2];
 }
 
-// Board pose from the detected corners, through a virtual pinhole looking at their mean bearing
-// (valid for any field of view).
+// Board pose from the detected corners (shared virtual-pinhole IPPE, best candidate).
 bool RoughBoardPose(const BoardSpec& board, const BoardDetection& det, const CameraIntrinsics& cam, Iso3& T_cb) {
     std::vector<Vec3> bearings, objs;
     for (size_t k = 0; k < det.ids.size(); ++k) {
@@ -37,49 +36,9 @@ bool RoughBoardPose(const BoardSpec& board, const BoardDetection& det, const Cam
             objs.push_back(obj[c]);
         }
     }
-    if (bearings.size() < 4) return false;
-    Vec3 m = Vec3::Zero();
-    for (const Vec3& b : bearings) m += b;
-    m.normalize();
-    Vec3 x = Vec3::UnitY().cross(m);
-    if (x.norm() < 1e-6) x = Vec3::UnitX().cross(m);
-    x.normalize();
-    Mat3 R_cv;
-    R_cv.col(0) = x;
-    R_cv.col(1) = m.cross(x);
-    R_cv.col(2) = m;
-    std::vector<cv::Point3f> o;
-    std::vector<cv::Point2f> p;
-    for (size_t i = 0; i < bearings.size(); ++i) {
-        const Vec3 bv = R_cv.transpose() * bearings[i];
-        if (bv.z() < 0.05) continue;
-        o.emplace_back(static_cast<float>(objs[i].x()), static_cast<float>(objs[i].y()), static_cast<float>(objs[i].z()));
-        p.emplace_back(static_cast<float>(bv.x() / bv.z()), static_cast<float>(bv.y() / bv.z()));
-    }
-    if (o.size() < 4) return false;
-    std::vector<cv::Mat> rv, tv;
-    std::vector<double> err;
-    try {
-        cv::solvePnPGeneric(o, p, cv::Mat::eye(3, 3, CV_64F), cv::noArray(), rv, tv, false, cv::SOLVEPNP_IPPE,
-                            cv::noArray(), cv::noArray(), err);
-    } catch (const cv::Exception&) {
-        return false;
-    }
-    if (rv.empty()) return false;
-    size_t best = 0;
-    for (size_t s = 1; s < err.size(); ++s) {
-        if (err[s] < err[best]) best = s;
-    }
-    cv::Mat R;
-    cv::Rodrigues(rv[best], R);
-    Iso3 T_vb = Iso3::Identity();
-    for (int r = 0; r < 3; ++r) {
-        for (int c = 0; c < 3; ++c) T_vb.linear()(r, c) = R.at<double>(r, c);
-        T_vb.translation()[r] = tv[best].at<double>(r);
-    }
-    Iso3 T_cv = Iso3::Identity();
-    T_cv.linear() = R_cv;
-    T_cb = T_cv * T_vb;
+    const std::vector<Iso3> cand = BoardPoseCandidates(bearings, objs);
+    if (cand.empty()) return false;
+    T_cb = cand.front();
     return true;
 }
 
@@ -159,9 +118,7 @@ FocusMeasure MeasureFocus(const cv::Mat& gray, const BoardSpec& board, const Boa
     FocusMeasure m;
     if (det.ids.empty()) return m;
     // Linear intensities: the erf model holds before the camera's gamma.
-    cv::Mat lin;
-    gray.convertTo(lin, CV_32F, 1.0 / 255.0);
-    cv::pow(lin, opts.gamma, lin);
+    const cv::Mat lin = LinearizeGray(gray, opts.gamma);
 
     Iso3 T_cb = Iso3::Identity();
     const bool posed = RoughBoardPose(board, det, rough, T_cb);
@@ -200,11 +157,10 @@ FocusMeasure MeasureFocus(const cv::Mat& gray, const BoardSpec& board, const Boa
     std::vector<double> dev;
     for (double s : sig) dev.push_back(std::fabs(s - m.blur_sigma_px));
     m.blur_spread_px = Median(dev);
-    if (n_pts > 0) {
-        centroid /= n_pts;
-        m.distance_m = centroid.norm();
-        m.off_axis_deg = std::atan2(std::hypot(centroid.x(), centroid.y()), centroid.z()) * 180.0 / M_PI;
-    }
+    if (n_pts == 0) return m;  // blur without a board pose: no distance to classify the frame by
+    centroid /= n_pts;
+    m.distance_m = centroid.norm();
+    m.off_axis_deg = std::atan2(std::hypot(centroid.x(), centroid.y()), centroid.z()) * 180.0 / M_PI;
     m.ok = true;
     return m;
 }

@@ -9,6 +9,7 @@
 // session.yaml: the intrinsics-session config (boards, cameras: model + width/height + f_init,
 // or a nominal camera_info) plus
 //   focus: {near_m: 0.13, far_m: 0.30, max_off_axis_deg: 35}
+// Intensities are linearised with detection.gamma (as the detector does); focus.gamma overrides it.
 //
 // Procedure (also printed by the tool):
 //   1. Board centred in the image at the target distance s = harmonic mean of near and far
@@ -77,6 +78,7 @@ int main(int argc, char** argv) {
         if (!(near_m > 0 && far_m > near_m)) throw std::runtime_error("focus: need 0 < near_m < far_m");
         FocusOptions fo;
         if (fnode["max_off_axis_deg"]) fo.max_off_axis_deg = fnode["max_off_axis_deg"].as<double>();
+        fo.gamma = cfg.detect.gamma;  // the camera's encoding, as the detector uses it (detection.gamma)
         if (fnode["gamma"]) fo.gamma = fnode["gamma"].as<double>();
         const double target = FocusTarget(near_m, far_m);
         if (cfg.cameras.empty() || cfg.boards.empty()) throw std::runtime_error("config needs cameras and boards");
@@ -124,7 +126,7 @@ int main(int argc, char** argv) {
             }
             std::string note;
             if (!fr.m.ok) {
-                note = "no board near the image centre";
+                note = fr.m.n_edges >= 8 ? "no board pose (check the rough intrinsics)" : "no board near the image centre";
             } else {
                 const double rel = fr.m.distance_m / target - 1.0;
                 if (std::fabs(rel) <= 0.10) {
