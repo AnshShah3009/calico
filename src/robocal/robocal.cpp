@@ -4018,6 +4018,32 @@ void RobotCalibrator::WriteYaml(const std::string& path) const {
             EmitStats(out, diag_.holdout.at(cam));
             out << YAML::EndMap;
         }
+        // Errors-in-variables (joint_noise_deg): the fitted per-frame joint corrections, for
+        // diagnostics (plot them against angle, load, approach direction).
+        bool any_eps = false;
+        for (const auto& kv : joint_eps_) any_eps = any_eps || kv.first.first == static_cast<int>(ai);
+        if (any_eps) {
+            out << YAML::Key << "joint_corrections_deg" << YAML::Value << YAML::BeginSeq;
+            for (const auto& kv : joint_eps_) {
+                if (kv.first.first != static_cast<int>(ai)) continue;
+                std::string image;
+                std::vector<double> q;
+                for (const View& v : views_) {
+                    if (v.arm == static_cast<int>(ai) && v.frame_idx == kv.first.second) {
+                        image = v.image;
+                        q = v.q;
+                        break;
+                    }
+                }
+                std::vector<double> e, qd;
+                for (double x : kv.second) e.push_back(x / kDeg);
+                for (double x : q) qd.push_back(x / kDeg);
+                out << YAML::Flow << YAML::BeginMap << YAML::Key << "frame" << YAML::Value << kv.first.second << YAML::Key
+                    << "image" << YAML::Value << image << YAML::Key << "q_deg" << YAML::Value << YAML::Flow << qd
+                    << YAML::Key << "eps_deg" << YAML::Value << YAML::Flow << e << YAML::EndMap;
+            }
+            out << YAML::EndSeq;
+        }
         out << YAML::EndMap;
     }
     out << YAML::EndMap;
