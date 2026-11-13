@@ -289,6 +289,53 @@ void TestProjectionPast90() {
 
 // Every wide-angle model: project -> unproject round trip out to 100 deg, and the equidistant
 // approximation / repeatability helpers.
+// kb4_pupil (non-central): a 3D point projects through the moving pupil; its pixel unprojects to
+// the ray direction, and the point lies on the ray from (0, 0, z0(theta)) along it. With e1 = 0
+// the model is the equidistant one; at infinity it is the equidistant one for any e1.
+void TestPupilModel() {
+    std::cout << "[ RUN ] kb4_pupil: 3D round trip at 0.1-1 m to 100 deg, e1 = 0 / infinity reduce to equidistant\n";
+    const std::vector<double> eq = {667, 667.4, 958, 601, -0.0111, 0.0008, -0.00018, 0.00003};
+    std::vector<double> pu = eq;
+    pu.push_back(0.0012);  // e1 = 1.2 mm (real AR0234 + 200 deg M12)
+    std::vector<double> pu0 = eq;
+    pu0.push_back(0.0);
+    double worst_ray = 0, worst_e0 = 0, worst_inf = 0, shift_near = 0;
+    for (double dist : {0.1, 0.25, 1.0}) {
+        for (double th = 0.5; th <= 100; th += 1.5) {
+            for (double ph = 0; ph < 360; ph += 30) {
+                const Eigen::Vector3d u(std::sin(th * M_PI / 180) * std::cos(ph * M_PI / 180),
+                                        std::sin(th * M_PI / 180) * std::sin(ph * M_PI / 180), std::cos(th * M_PI / 180));
+                const Eigen::Vector3d X = dist * u;
+                double uv[2], uv0[2], uve[2];
+                CHECK(ProjectPoint(LensModel::KannalaBrandtPupil, pu.data(), Eigen::Matrix<double, 3, 1>(X), uv),
+                      "kb4_pupil projects " << th << " deg at " << dist << " m");
+                Eigen::Vector3d b;
+                CHECK(UnprojectPixel(LensModel::KannalaBrandtPupil, pu.data(), Eigen::Vector2d(uv[0], uv[1]), b),
+                      "kb4_pupil unprojects " << th << " deg at " << dist << " m");
+                b.normalize();
+                const double thb = std::atan2(std::hypot(b.x(), b.y()), b.z());
+                const Eigen::Vector3d o(0, 0, PupilOffset(LensModel::KannalaBrandtPupil, pu.data(), thb));
+                const Eigen::Vector3d d = (X - o).normalized();
+                worst_ray = std::max(worst_ray, std::atan2(b.cross(d).norm(), b.dot(d)) * 180 / M_PI);
+                ProjectPoint(LensModel::KannalaBrandtPupil, pu0.data(), Eigen::Matrix<double, 3, 1>(X), uv0);
+                ProjectPoint(LensModel::Equidistant, eq.data(), Eigen::Matrix<double, 3, 1>(X), uve);
+                worst_e0 = std::max(worst_e0, std::hypot(uv0[0] - uve[0], uv0[1] - uve[1]));
+                if (dist == 0.1 && th > 79 && th < 81) shift_near = std::max(shift_near, std::hypot(uv[0] - uve[0], uv[1] - uve[1]));
+                double ud[2];
+                ProjectDirection(LensModel::KannalaBrandtPupil, pu.data(), Eigen::Matrix<double, 3, 1>(u), ud);
+                ProjectPoint(LensModel::Equidistant, eq.data(), Eigen::Matrix<double, 3, 1>(u), uve);
+                worst_inf = std::max(worst_inf, std::hypot(ud[0] - uve[0], ud[1] - uve[1]));
+            }
+        }
+    }
+    std::cout << "      ray error " << worst_ray << " deg, e1 = 0 vs equidistant " << worst_e0 << " px, direction vs equidistant "
+              << worst_inf << " px, pupil shift at 0.1 m / 80 deg " << shift_near << " px\n";
+    CHECK(worst_ray < 1e-6, "kb4_pupil: point off its unprojected ray by " << worst_ray << " deg");
+    CHECK(worst_e0 < 1e-9, "kb4_pupil with e1 = 0 differs from equidistant by " << worst_e0 << " px");
+    CHECK(worst_inf < 1e-9, "kb4_pupil direction projection differs from equidistant by " << worst_inf << " px");
+    CHECK(shift_near > 1.0, "kb4_pupil: e1 = 1.2 mm should move a point at 0.1 m / 80 deg by > 1 px, got " << shift_near);
+}
+
 void TestWideModels() {
     std::cout << "[ RUN ] wide-angle models: round trip to 100 deg, equidistant approximation\n";
     struct M {
@@ -420,6 +467,7 @@ int main() {
     try {
         TestProjectionPast90();
         TestWideModels();
+        TestPupilModel();
         TestFoldDetection();
         TestJointSolve(false);
         TestJointSolve(true);
