@@ -1,0 +1,105 @@
+# calico-robocal config: bimanual Piper cell, fisheye wrist cameras + static center camera,
+# several static AprilGrids. calico detects the tags itself from the raw frames.
+# Relative paths resolve against this file's directory. Replace the <...> paths.
+#
+#   calico-robocal --config=configs/robocal/piper_bimanual.yaml --out=<out_dir>
+world_frame: base
+
+# Raw frames + joints, one entry per image (YAML list or JSON lines):
+#   - {camera: left, image: left_000.png, still_s: 0.52, joints: {left: [q1, q2, q3, q4, q5, q6]}}
+#   - {camera: center, image: center_000.png}
+# still_s: how long the arm had been stationary (reported joints unchanged) before the image and
+# the joints were taken. Joint states reach the recorder with a delay, so a frame captured while
+# the arm was still moving pairs the image with stale joints.
+frames: <RUN>/frames.yaml
+capture: {min_still_s: 0.3}    # frames with a smaller still_s are dropped (0: no check); record at >= 0.4 s
+# Gear backlash + sag under gravity between the motor-side encoders and the links (needs
+# <inertial> masses in the URDFs). approach: logged = frames carry travel_deg (signed final travel
+# per joint, e.g. travel_deg: {left: [2, -2, 2, 2, -2, 2]}); against_gravity = every capture move
+# ends against gravity (no logging needed). Use with joint_noise_deg (errors-in-variables) per arm.
+drive: {model: true, approach: logged, shared: true}
+
+# Static boards. Kalibr AprilGrid layout (tag id = first_id + row * cols + col, row 0 at the
+# bottom of the print; tag_size = black square; tag_spacing = gap / tag_size). Ids must not
+# overlap between boards of one family. Board poses are estimated (they only must not move).
+boards:
+  # Cell spec (README operator checklist): A2 table 5x7 55 mm (flat, level reference), two A3 side boards
+  # 3x4 55 mm tilted ~30 deg toward each arm, A2 back wall 4x6 60 mm. Enter MEASURED tag sizes.
+  - {name: table, rows: 5, cols: 7, tag_size: 0.055, tag_spacing: 0.3, first_id: 0, level: true, level_sigma_deg: 0.3}
+  - {name: left_wedge, rows: 3, cols: 4, tag_size: 0.055, tag_spacing: 0.3, first_id: 48}
+  - {name: right_wedge, rows: 3, cols: 4, tag_size: 0.055, tag_spacing: 0.3, first_id: 60}
+  - {name: back_wall, rows: 4, cols: 6, tag_size: 0.060, tag_spacing: 0.3, first_id: 72,
+     fit_shape: true}                  # estimate bow / twist (fit_scale: true adds x / y print scale)
+  # A marker on the left gripper, seen by the center camera. With a known (CAD / measured) mount,
+  # fixed: true makes the left J6 zero solvable (free it in delta_q_free).
+  # - {name: left_grip, rows: 3, cols: 3, tag_size: 0.03, first_id: 120,
+  #    mount: {arm: left, link: left_link6, fixed: true, T_link_board_init: {xyz: [..], rpy: [..]}}}
+
+detection:
+  cache: detections.jsonl   # written on the first run, reused afterwards
+  subpixel: true            # per-tag cornerSubPix, half window = clip(edge / 10, 3, 9) px
+  min_tags_per_board: 2     # a board view needs at least this many tags
+  gamma: 1.0                # AR0234 stream is linear (README: detection.gamma)
+  # Intrinsics are fixed in the robot solve: keep only big tags near the optical axis, where the
+  # lens model and the corner fit are best (0 = off). Real PiPER runs: 40 deg, 35 px.
+  max_theta_deg: 40
+  min_tag_px: 35
+
+arms:
+  - name: left
+    urdf: <ROBOT>/piper_left.urdf
+    base_link: left_base_link
+    tip_link: left_link6               # the wrist camera's parent link
+    ee_link: left_end_effector         # optional: also export T_EC (end_effector -> optical)
+    joints: [left_joint1, left_joint2, left_joint3, left_joint4, left_joint5, left_joint6]
+    T_world_base: {xyz: [0.0, 0.3, 0.0], rpy: [0, 0, 0]}
+    base_fixed: true                   # gauge: the world frame is pinned to this base
+    # Per joint: free = estimated, false = held at delta_q_init_rad (a known zero).
+    # Without a marker on the robot, J1 trades exactly against the base / world yaw and J6
+    # against the wrist camera roll: the images cannot tell them apart. Their zeros are known
+    # mechanically to < 1 deg, so they are free with a tight prior (0 +- 0.5 deg): the solution
+    # sits at the prior and the reported sigma is honest. J2-J5: free with a wide prior.
+    delta_q_free: [true, true, true, true, true, true]
+    delta_q_init_rad: [0, 0, 0, 0, 0, 0]
+    delta_q_sigma_deg: [0.5, 20, 20, 20, 20, 0.5]   # prior per joint (or one scalar)
+    joint_noise_deg: 0.03              # per-frame encoder / unmodelled drive noise (errors-in-variables)
+    camera: left
+    optical_in_body_rpy: [-1.5707963267948966, 0, -1.5707963267948966]   # ROS body -> optical
+    T_tip_cam_body_init: {xyz: [-0.0813, 0.0185, 0.0553], rpy: [-0.2096, -1.1552, 0.0933]}
+
+  - name: right
+    urdf: <ROBOT>/piper_right.urdf
+    base_link: right_base_link
+    tip_link: right_link6
+    ee_link: right_end_effector
+    joints: [right_joint1, right_joint2, right_joint3, right_joint4, right_joint5, right_joint6]
+    T_world_base: {xyz: [0.0, -0.3, 0.0], rpy: [0, 0, 0]}   # initial guess only
+    base_fixed: false
+    # base_prior: {trans_m: 0.05, rot_deg: 5}              # optional soft prior on a free base
+    delta_q_free: [true, true, true, true, true, true]
+    delta_q_sigma_deg: [0.5, 20, 20, 20, 20, 0.5]
+    joint_noise_deg: 0.03
+    camera: right
+    optical_in_body_rpy: [-1.5707963267948966, 0, -1.5707963267948966]
+    T_tip_cam_body_init: {xyz: [-0.0813, 0.0185, 0.0553], rpy: [-0.2096, -1.1552, 0.0933]}
+
+cameras:
+  # Intrinsics come from the intrinsics stage (intrinsics_session.yaml, gates PASS) and stay fixed:
+  # the robot run does not cover the image well enough to fit a 200 deg lens (a robot solve refuses
+  # optimize_intrinsics unless solver.allow_intrinsics_in_robot_solve is set).
+  # Use the stage-1 <cam>.camera_info.yaml (kb4_pupil, non-central), NOT <cam>.camera_info.equidistant.yaml:
+  # in simulation the central approximation costs ~0.7 mm gripper p95 and 1.4 mm on the centre camera.
+  - {name: left, camera_info: <INTRINSICS>/left.camera_info.yaml}
+  - {name: right, camera_info: <INTRINSICS>/right.camera_info.yaml}
+  - name: center
+    camera_info: <INTRINSICS>/center.camera_info.yaml
+    static: true                       # pose from its board views (no initial guess needed)
+    optical_in_body_rpy: [-1.5707963267948966, 0, -1.5707963267948966]
+
+solver:
+  huber_px: 1.0
+  # max_rms_px: 6.0  # sanity gate (default 1.5): rigid PiPER without the drive model sits at 3.4-4.7 px
+  holdout_every: 5    # every 5th view per camera is held out and scored, never fitted
+  outlier_floor_px: 3.0
+  outlier_mad_k: 5.0
+  threads: 8

@@ -39,6 +39,8 @@ jobs:
           python -m py_compile tools/test_tools.py
           python -m py_compile sim/verify_mujoco_april.py
           python -m py_compile sim/verify_mujoco_charuco.py
+          python -m py_compile tools/robocal_visualize.py
+          python -m py_compile tools/robocal_rounds.py
 
       - name: Run Python Tools Unit Test Suite
         run: |
@@ -66,6 +68,11 @@ jobs:
       - name: Run C++ Unit Tests in Container
         run: |
           docker compose run --rm --entrypoint calico_tests calico-cpu
+
+      - name: Run robocal Tests in Container
+        run: |
+          docker compose run --rm --entrypoint robocal_tests calico-cpu
+          docker compose run --rm --entrypoint robocal_render_tests calico-cpu
 
   build-docker-cuda:
     name: Build & Verify Docker calico-cuda

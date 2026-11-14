@@ -1,0 +1,45 @@
+# Stage 1 (intrinsics) for one WRIST camera (AR0234 + 200 deg M12, working range 13-30 cm).
+# Used by tools/robocal_intrinsics_session.sh, which copies it into the session directory,
+# writes frames.yaml from <session>/images/*.png and runs: full solve, even / odd split-half
+# solves, the repeatability comparison and the visualisations.
+#
+#   tools/robocal_intrinsics_session.sh <session_dir> configs/robocal/sessions/wrist_intrinsics.yaml
+#
+# Boards (configs/robocal/README.md, operator checklist): 2 x A4 Kalibr AprilGrid 7 x 10, 20 mm tags,
+# spacing 0.3, tag36h11, ids 100.. and 170.., matte toner print bonded to aluminium composite or
+# glass. Enter the tag size MEASURED with calipers, not the nominal one.
+frames: frames.yaml
+reference_board: a
+boards:
+  - {name: a, rows: 7, cols: 10, tag_size: 0.020, tag_spacing: 0.3, first_id: 100, fit_shape: true}
+  - {name: b, rows: 7, cols: 10, tag_size: 0.020, tag_spacing: 0.3, first_id: 170, fit_shape: true}
+  # Loose paper only (not recommended): add fit_points: true, point_sigma_mm: 0.3 per board.
+
+cameras:
+  # mode: free_views -- one pose per board view. Robust whether the camera or the boards moved.
+  # mode: handheld   -- one pose per frame, boards rigid w.r.t. each other (both boards on one
+  #                     fixed stand, camera moved): fewer unknowns, also checks the rig is rigid.
+  - name: cam
+    mode: free_views
+    model: kb4_pupil            # KB4 + entrance pupil moving along the axis (non-central); measured on
+                                # both wrist lenses (e1 1.2-1.4 mm). A central model costs ~0.7 mm at the
+                                # gripper in simulation. auto / equidistant only for comparison.
+    export_distance_m: 0.25     # the central .equidistant.yaml (for ROS-only tools) is fitted here
+    width: 1920                 # full AR0234 sensor, 1920 x 1200 (the stream mode used in operation)
+    height: 1200
+    f_init: 640
+    intrinsics_prepass: true
+    optimize_intrinsics: true
+
+focus: {near_m: 0.13, far_m: 0.30, max_off_axis_deg: 35}     # harmonic mean 0.181 m
+
+detection: {cache: detections.jsonl, gamma: 1.0, min_tags_per_board: 2}   # stream is linear: gamma 2.2 drops ~80 % of corners
+
+intrinsics_gates:
+  max_holdout_rms_px: 0.30      # rigid boards: expect ~0.15-0.25 px
+  min_theta_deg: 85
+  min_coverage: 0.9
+  max_curve_sd_px: 0.15
+  max_mean_radial_px: 0.10
+
+solver: {huber_px: 1.0, holdout_every: 5, bootstrap: 10, threads: 16}
