@@ -68,6 +68,7 @@ besides the images, the joints, the URDFs and the board layouts.
 | board shape | board | optional (`fit_shape`): bow along x / y and twist (mm), `fit_scale`: x / y print scale |
 | `T_link_board` | arm-mounted board | e.g. a gripper marker; free, or fixed (known mount: makes the last joint solvable) |
 | frame poses | hand-held camera | one free pose per frame (intrinsics sessions without a robot) |
+| geometry terms | arm joint | optional (`arms[].geometry`): 2 axis tilts + 2 shifts perpendicular to each joint axis |
 
 Residuals are pixel reprojections of every board corner (Huber loss), plus priors:
 `delta_q` around `delta_q_init_rad`, optional base priors, and an optional level prior that
@@ -177,13 +178,43 @@ drive: {model: true, approach: against_gravity, shared: true}
 #                             travel_deg: {left: [2, -2, 2, 2, -2, 2]}
 #           none            - only strongly loaded joints are modelled
 # friction_nm, tau_min_nm, backlash_prior_deg / backlash_sigma_deg, compliance_sigma, gravity
+# backlash_joints / compliance_joints: [bool x n] masks, false = term off (held at 0)
+# flank_select: true - each training frame takes the gear flank (+-1) that fits its images best
+#               (two-state errors-in-variables; diagnostic: on the PiPER data it over-fits)
 ```
+
+Per arm, `drive_fixed: {compliance_rad_per_nm: [n], half_backlash_rad: [n]}` (with `shared: false`)
+holds the drive terms at given values, e.g. transferred from another session.
+
+Real PiPER bimanual cell (teach-mode captures under gravity compensation, 76 captures, 5-split
+cross-validation, held-out RMS both wrists): rigid offsets 5.56 px, `approach: against_gravity` with
+the inertial URDF 4.77 px (J2 half backlash ~0.3 deg). `approach: logged` with travel reconstructed
+from consecutive snapshots did not help (5.28 px): the hand's last motion into a pose is not the net
+change between captures. Details and figures: `docs/robocal/README.md`.
 
 Use it together with errors-in-variables (`joint_noise_deg`, scalar or per joint, ~0.03 deg with the
 model). Frames whose flank is ambiguous get their encoder prior widened by the backlash. The
 result (`robot_calib.yaml`, `arms.<arm>.drive`) has compliance, half backlash, the reference load
 and the unloaded zero `delta_q_unloaded_rad`; a controller that applies the same terms gets the
 compensated accuracy, one that ignores them the effective zero at the reference load.
+
+## Arm geometry (`arms[].geometry`)
+
+```yaml
+arms:
+  - name: left
+    geometry: {sigma_mm: 1.0, sigma_deg: 0.3}   # or geometry: true (these defaults)
+```
+
+Minimal geometric calibration (after Lu et al. 2025 / Tobuschat et al. 2026): per joint, two tilts of
+the axis and two shifts perpendicular to it, applied in the joint frame before the joint motion
+(`UrdfChain::Forward`). The shift along / tilt about the axis itself are left out (they duplicate the
+next joint or the zero offset). Gaussian priors at manufacturing tolerance keep the directions the
+images cannot see (J1 vs the base, J6 vs the camera mount) at zero. Written to `robot_calib.yaml:
+arms.<arm>.geometry_terms` (per joint: tilt 1 / 2 in deg, shift 1 / 2 in mm). Real PiPER cell: held-out
+4.62 -> 3.91 px (with backlash, filter and fixed boards), terms <= 0.37 deg / 1.5 mm; the result is
+insensitive to the prior between 0.3 and 1 mm. The exported URDF and `T_EC` do not include these terms:
+an FK that should reproduce the solve must apply them.
 
 ## Solver
 
@@ -198,6 +229,8 @@ solver:
   global: none          # multistart | basin_hopping (annealed restarts around the joint solve)
   mount_init: auto      # camera mount start: closed-form hand-eye from the data vs CAD, best kept
   max_rms_px: 1.5       # robot solve sanity gate (training RMS per camera)
+  distance_sigma_mm: 0  # > 0: per-corner weight 1/sqrt(px^2 + (mm f / depth)^2), Tenhumberg 2022
+  distance_sigma_px: 0.3  #     its pixel part (close corners weigh less; neutral on the PiPER data)
   view_weights: false   # true (2 rounds) | n: after pass 3, a view whose residual spread s_v
                         # exceeds the pixel noise s_0 is weighted by s_0 / s_v (blurred views, a
                         # sheet bending in one view): a few bad sequences cannot pull the lens.
@@ -347,13 +380,23 @@ Writes `<out_dir>/robot_calib.yaml`:
 - `arms.<name>`: `delta_q_rad` / `delta_q_deg`, `base_to_base`, `T_tip_cam_optical`,
   `camera_link6` (body frame, when `optical_in_body_rpy` is set), `T_EC` (when `ee_link` is
   set) and per-camera `quality` (train / hold-out);
+- `arms.<name>.joint_corrections_deg` (with `joint_noise_deg`): per frame the image, encoder joints
+  and the fitted correction -- the joint error the cameras see, for backlash / gear-play diagnosis;
+- `arms.<name>.geometry_terms` (with `geometry`);
 - `boards`, `T_base_board` (the level board), `sensors.<static camera>.T_base_cam`;
 - `diagnostics`: free parameter count, condition number, **weak directions** (combinations the
   images do not determine, with the parameters involved), parameters with no data, and the
   1-sigma of every free parameter (deg / mm / px, scaled by the residual variance).
 
 All RMS values are per point, `sqrt(mean |e|^2)` in px (OpenCV's convention). The per-axis
-value is that divided by sqrt(2).
+value is that divided by sqrt(2). `residuals.csv` has one row per corner (pixel error, hold-out flag,
+off-axis angle, `depth_m` = distance from the camera with the solved poses, for mm-scale reports).
+
+Other per-arm / per-board options used for validation:
+- `camera_mount_fixed: true` with `T_tip_cam_init`: hold the wrist camera mount (cross-session tests);
+- `joint_noise_loss: cauchy`: robust per-joint errors-in-variables prior (over-fits on teach-mode data);
+- boards: `shape_fixed_mm: [bow_x, bow_y, twist]` (+ `print_scale_pct`) holds a board's shape, e.g.
+  from an image-only fit (camera pose free per frame), so arm error does not leak into the boards.
 
 ## Pipeline
 

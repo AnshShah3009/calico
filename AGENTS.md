@@ -166,6 +166,9 @@ Board print scale: `fit_scale` (stage 1, office prints) and `print_scale_pct: [x
 Wide fisheyes: lens model `kb4_pupil` (KB4 + entrance-pupil shift e1, non-central; the stage 1 sessions use it,
 a central `.equidistant.yaml` is exported next to it for ROS tools). Robot solve with fixed intrinsics: keep only
 big tags near the axis with `detection.max_theta_deg` / `detection.min_tag_px` (real runs: 40 deg, 35 px).
+Real bimanual PiPER results, error analysis (backlash, arm geometry, held-out validation), figures and videos:
+`docs/robocal/README.md`; literature survey: `docs/robocal/LITERATURE.md`. Optional arm models: `drive:` (gravity-side
+backlash) and `arms[].geometry` (4 terms per joint).
 Config format, outputs and diagnostics: `configs/robocal/README.md`. Tests (under `ctest`):
 `robocal_render_tests` (rendered 190 deg fisheye frames, four boards, full pipeline) and
 `robocal_tests` (synthetic correspondences, observability report).
