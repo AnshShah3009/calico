@@ -560,6 +560,10 @@ Config Config::Load(const std::string& path) {
         if (arm.dq_init.size() != n || arm.dq_free.size() != n || arm.dq_sigma_rad.size() != n) {
             throw std::runtime_error("arm " + arm.name + ": delta_q lists must have one entry per joint");
         }
+        if (a["joint_noise_loss"]) {
+            arm.joint_noise_loss = a["joint_noise_loss"].as<std::string>();
+            if (arm.joint_noise_loss != "gaussian" && arm.joint_noise_loss != "cauchy") throw std::runtime_error("arm " + arm.name + ": joint_noise_loss gaussian | cauchy");
+        }
         if (const YAML::Node jn = a["joint_noise_deg"]) {
             if (jn.IsSequence()) {
                 for (double v : ReadList<double>(jn)) arm.joint_noise_joint_rad.push_back(v * kDeg);
@@ -574,6 +578,23 @@ Config Config::Load(const std::string& path) {
         if (a["camera"]) arm.camera = a["camera"].as<std::string>();
         if (a["samples"]) arm.samples = JoinPath(dir, a["samples"].as<std::string>());
         if (a["T_tip_cam_init"]) arm.T_tip_cam_init = ReadPose(a["T_tip_cam_init"]);
+        if (a["camera_mount_fixed"]) arm.camera_mount_fixed = a["camera_mount_fixed"].as<bool>();
+        if (const YAML::Node g = a["geometry"]) {  // true | {sigma_mm, sigma_deg}
+            if (g.IsScalar()) {
+                arm.geometry = g.as<bool>();
+            } else {
+                arm.geometry = true;
+                if (g["sigma_mm"]) arm.geometry_sigma_mm = g["sigma_mm"].as<double>();
+                if (g["sigma_deg"]) arm.geometry_sigma_deg = g["sigma_deg"].as<double>();
+            }
+        }
+        if (const YAML::Node df = a["drive_fixed"]) {  // {compliance_rad_per_nm: [n], half_backlash_rad: [n]}
+            const std::vector<double> c = ReadList<double>(df["compliance_rad_per_nm"]);
+            const std::vector<double> h = ReadList<double>(df["half_backlash_rad"]);
+            if (c.size() != h.size()) throw std::runtime_error("arm " + arm.name + ": drive_fixed needs n compliances and n half backlashes");
+            arm.drive_fixed = c;
+            arm.drive_fixed.insert(arm.drive_fixed.end(), h.begin(), h.end());
+        }
         if (a["optical_in_body_rpy"]) {
             arm.has_optical_in_body = true;
             arm.optical_in_body_rpy = ReadVec3(a["optical_in_body_rpy"]);
@@ -649,6 +670,12 @@ Config Config::Load(const std::string& path) {
         }
         if (b["fit_shape"]) spec.fit_shape = b["fit_shape"].as<bool>();
         if (b["fit_scale"]) spec.fit_scale = b["fit_scale"].as<bool>();
+        if (const YAML::Node sf = b["shape_fixed_mm"]) {
+            const std::vector<double> v = ReadList<double>(sf);
+            if (v.size() != 3) throw std::runtime_error("board " + spec.name + ": shape_fixed_mm needs [bow_x, bow_y, twist]");
+            spec.has_shape_fixed = true;
+            for (int k = 0; k < 3; ++k) spec.shape_fixed_m[k] = v[k] * 1e-3;
+        }
         if (spec.fit_scale && !spec.fit_shape) {
             // The x / y scale lives in the board shape block, which is only free with fit_shape:
             // without this, fit_scale alone would silently hold the scale at print_scale_pct.
@@ -686,6 +713,9 @@ Config Config::Load(const std::string& path) {
         if (d["backlash_prior_deg"]) dc.h_prior_deg = 0.5 * d["backlash_prior_deg"].as<double>();
         if (d["backlash_sigma_deg"]) dc.h_sigma_deg = 0.5 * d["backlash_sigma_deg"].as<double>();
         if (d["compliance_sigma"]) dc.c_sigma = ReadList<double>(d["compliance_sigma"]);
+        if (d["flank_select"]) dc.flank_select = d["flank_select"].as<bool>();
+        if (d["backlash_joints"]) for (const auto& e : d["backlash_joints"]) dc.backlash_joints.push_back(e.as<bool>());
+        if (d["compliance_joints"]) for (const auto& e : d["compliance_joints"]) dc.compliance_joints.push_back(e.as<bool>());
         if (d["gravity"]) {
             const std::vector<double> g = ReadList<double>(d["gravity"]);
             if (g.size() != 3) throw std::runtime_error("drive.gravity: [x, y, z] in the world frame");
@@ -726,6 +756,8 @@ Config Config::Load(const std::string& path) {
     if (const YAML::Node s = root["solver"]) {
         SolverOptions& o = cfg.solver;
         if (s["huber_px"]) o.huber_px = s["huber_px"].as<double>();
+        if (s["distance_sigma_mm"]) o.distance_sigma_mm = s["distance_sigma_mm"].as<double>();
+        if (s["distance_sigma_px"]) o.distance_sigma_px = s["distance_sigma_px"].as<double>();
         if (s["holdout_every"]) o.holdout_every = s["holdout_every"].as<int>();
         if (s["max_iterations"]) o.max_iterations = s["max_iterations"].as<int>();
         if (s["outlier_floor_px"]) o.outlier_floor_px = s["outlier_floor_px"].as<double>();
@@ -865,6 +897,16 @@ void RobotCalibrator::Load() {
             const int n = s.chain.dof();
             s.drv.assign(2 * n, 0.0);
             for (int j = 0; j < n; ++j) s.drv[n + j] = cfg_.drive.h_prior_deg * kDeg;
+            if (!a.drive_fixed.empty()) {
+                if (static_cast<int>(a.drive_fixed.size()) != 2 * n || cfg_.drive.shared) {
+                    throw std::runtime_error("arm " + a.name + ": drive_fixed needs 2 x " + std::to_string(n) + " values and drive.shared: false");
+                }
+                s.drv = a.drive_fixed;
+            }
+            for (int j = 0; j < n; ++j) {
+                if (j < static_cast<int>(cfg_.drive.compliance_joints.size()) && !cfg_.drive.compliance_joints[j]) s.drv[j] = 0.0;
+                if (j < static_cast<int>(cfg_.drive.backlash_joints.size()) && !cfg_.drive.backlash_joints[j]) s.drv[n + j] = 0.0;
+            }
             s.tau_ref.assign(n, 0.0);
             s.s_ref.assign(n, 0.0);
             if (cfg_.drive.model && s.chain.TotalMass() <= 0) {
@@ -873,6 +915,7 @@ void RobotCalibrator::Load() {
         }
         s.tip_cam = PoseParam::FromIso(a.T_tip_cam_init);
         s.world_base = PoseParam::FromIso(a.T_world_base);
+        s.geo.assign(4 * s.chain.dof(), 0.0);
         arms_.push_back(s);
     }
     if (cfg_.drive.model && cfg_.drive.shared) {
@@ -1557,7 +1600,10 @@ void RobotCalibrator::ComputeDriveRegressors(bool verbose) {
             } else if (movable.count(static_cast<int>(ai))) {
                 any = movable[static_cast<int>(ai)][e];
             }
-            if (!any) held.push_back(e);
+            const int jj = e % n;
+            const std::vector<bool>& mask = e < n ? dc.compliance_joints : dc.backlash_joints;
+            const bool masked = jj < static_cast<int>(mask.size()) && !mask[jj];
+            if (!any || masked || !cfg_.arms[ai].drive_fixed.empty()) held.push_back(e);
         }
         arms_[ai].drv_const = held;
     }
@@ -1825,12 +1871,16 @@ int RobotCalibrator::GuidedPass(int ci, bool rectified) {
 void RobotCalibrator::WriteResiduals(const std::string& path) const {
     std::ofstream f(path);
     if (!f) throw std::runtime_error("cannot write " + path);
-    f << "image,camera,board,pid,u,v,du,dv,holdout,theta_deg\n";
+    f << "image,camera,board,pid,u,v,du,dv,holdout,theta_deg,depth_m\n";
     f << std::setprecision(6);
     std::vector<double> r;
     for (const View& v : views_) {
         if (v.dropped || !ViewResiduals(v, r)) continue;
         const CamState& cam = cams_[v.camera];
+        // camera -> board with the solved state (static boards); depth of each corner for mm-scale reports
+        const BoardState& bs = boards_.at(v.board);
+        const bool T_cb_ok = !bs.mounted;
+        const Iso3 T_cb = T_cb_ok ? Iso3(CameraInWorld(v).inverse() * bs.pose.ToIso()) : Iso3::Identity();
         for (size_t i = 0; i < v.obj.size(); ++i) {
             Vec3 b;
             double th = 0;
@@ -1839,7 +1889,8 @@ void RobotCalibrator::WriteResiduals(const std::string& path) const {
             }
             f << v.image << "," << cfg_.cameras[v.camera].name << "," << v.board << ","
               << (i < v.pids.size() ? v.pids[i] : -1) << "," << v.img[i].x() << "," << v.img[i].y() << ","
-              << r[2 * i] << "," << r[2 * i + 1] << "," << (v.holdout ? 1 : 0) << "," << th << "\n";
+              << r[2 * i] << "," << r[2 * i + 1] << "," << (v.holdout ? 1 : 0) << "," << th << ","
+              << (T_cb_ok ? (T_cb * v.obj[i]).norm() : 0.0) << "\n";
         }
     }
 }
@@ -2014,6 +2065,10 @@ void RobotCalibrator::SetupBoards() {
         b.scale_sigma = s.scale_sigma;
         b.print_scale[0] = b.shape[3] = s.print_scale[0];
         b.print_scale[1] = b.shape[4] = s.print_scale[1];
+        if (s.has_shape_fixed) {
+            if (s.fit_shape || s.fit_scale) throw std::runtime_error("board " + s.name + ": shape_fixed_mm excludes fit_shape / fit_scale");
+            for (int k = 0; k < 3; ++k) b.shape[k] = s.shape_fixed_m[k];
+        }
         if (!s.mount_arm.empty()) {
             b.mounted = true;
             b.arm = ArmIndex(s.mount_arm);
@@ -2156,6 +2211,27 @@ void RobotCalibrator::Initialize() {
         }
     }
 
+    if (cfg_.solver.distance_sigma_mm > 0) {
+        // Tenhumberg 2022 virtual Cartesian noise: a model error of s_mm at the point shows as s_mm f / depth
+        // pixels, so close corners get less weight. Depth from the view's PnP pose (fixed through the solve).
+        const double sp = cfg_.solver.distance_sigma_px, sm = cfg_.solver.distance_sigma_mm * 1e-3;
+        int n_w = 0;
+        double w_sum = 0;
+        for (View& v : views_) {
+            v.dw.clear();
+            if (v.dropped || !v.has_T_cam_board) continue;
+            const double f = cams_[v.camera].intr.params[0];
+            for (const Vec3& o : v.obj) {
+                const double d = std::max(0.05, (v.T_cam_board * o).norm());
+                const double w = sp / std::sqrt(sp * sp + std::pow(sm * f / d, 2));
+                v.dw.push_back(w);
+                w_sum += w;
+                ++n_w;
+            }
+        }
+        std::cout << "[robocal] distance weights (" << cfg_.solver.distance_sigma_mm << " mm, " << sp << " px): mean "
+                  << (n_w ? w_sum / n_w : 0.0) << " over " << n_w << " corners" << std::endl;
+    }
     InitMountsFromData();
     auto is_static_board = [&](const std::string& n) { return !boards_.at(n).mounted; };
     std::map<std::string, std::vector<Iso3>> board_obs;
@@ -2290,6 +2366,10 @@ ViewCost RobotCalibrator::MakeViewCost(const View& v, std::vector<double*>* bloc
         if (cfg_.drive.model && static_cast<int>(v.dtau.size()) == a.chain.dof()) {
             c.cam_drive = true;
             add(self->DriveBlock(v.arm), 2 * a.chain.dof());
+        }
+        if (cfg_.arms[v.arm].geometry) {
+            c.cam_geo = true;
+            add(a.geo.data(), 4 * a.chain.dof());
         }
         add(a.tip_cam.q, 4);
         add(a.tip_cam.t, 3);
@@ -2433,6 +2513,19 @@ void RobotCalibrator::BuildProblem(ceres::Problem& problem, const Flags& f) {
         } else if (!fixed.empty()) {
             problem.SetManifold(a.dq.data(), new ceres::SubsetManifold(a.chain.dof(), fixed));
         }
+        if (ac.geometry && problem.HasParameterBlock(a.geo.data())) {
+            if (!f.free_dq || f.only_static) {
+                problem.SetParameterBlockConstant(a.geo.data());
+            } else if (!f.no_priors) {
+                const int ng = 4 * a.chain.dof();
+                DeltaQPrior gp{std::vector<double>(ng, 0.0), std::vector<double>(ng, 0.0)};
+                for (int e = 0; e < ng; ++e) gp.inv_sigma[e] = (e % 4 < 2) ? 1.0 / (ac.geometry_sigma_deg * kDeg) : 1.0 / (ac.geometry_sigma_mm * 1e-3);
+                auto* gc = new ceres::DynamicAutoDiffCostFunction<DeltaQPrior, 8>(new DeltaQPrior(gp));
+                gc->AddParameterBlock(ng);
+                gc->SetNumResiduals(ng);
+                problem.AddResidualBlock(gc, nullptr, a.geo.data());
+            }
+        }
         if (!dq_const && !f.no_priors) {
             DeltaQPrior prior{ac.dq_init, {}};
             for (double s : ac.dq_sigma_rad) prior.inv_sigma.push_back(s > 0 ? 1.0 / s : 0.0);
@@ -2442,8 +2535,9 @@ void RobotCalibrator::BuildProblem(ceres::Problem& problem, const Flags& f) {
             problem.AddResidualBlock(cost, nullptr, a.dq.data());
         }
         if (arms_with_camera.count(ai)) {
-            quat(a.tip_cam.q, f.only_static);
-            if (f.only_static) problem.SetParameterBlockConstant(a.tip_cam.t);
+            const bool mount_const = f.only_static || ac.camera_mount_fixed;
+            quat(a.tip_cam.q, mount_const);
+            if (mount_const) problem.SetParameterBlockConstant(a.tip_cam.t);
         }
         const bool base_const = ac.base_fixed || f.only_static;
         quat(a.world_base.q, base_const);
@@ -2573,6 +2667,18 @@ void RobotCalibrator::BuildProblem(ceres::Problem& problem, const Flags& f) {
             double s2 = std::pow(j < eac.joint_noise_joint_rad.size() ? eac.joint_noise_joint_rad[j] : sigma, 2);
             if (drv && amb != frame_amb_.end()) s2 += std::pow(amb->second[j] * drv[n + j], 2);
             inv[j] = 1.0 / std::sqrt(std::max(1e-16, s2));
+        }
+        if (eac.joint_noise_loss == "cauchy") {  // one robust term per joint: a gear jump costs ~log, not ~square
+            for (size_t j = 0; j < n; ++j) {
+                std::vector<double> inv_j(n, 0.0);
+                inv_j[j] = inv[j];
+                DeltaQPrior pj{std::vector<double>(n, 0.0), inv_j};
+                auto* cj = new ceres::DynamicAutoDiffCostFunction<DeltaQPrior, 8>(new DeltaQPrior(pj));
+                cj->AddParameterBlock(static_cast<int>(n));
+                cj->SetNumResiduals(static_cast<int>(n));
+                problem.AddResidualBlock(cj, new ceres::CauchyLoss(1.0), e);
+            }
+            continue;
         }
         DeltaQPrior prior{std::vector<double>(kv.second.size(), 0.0), inv};
         auto* cost = new ceres::DynamicAutoDiffCostFunction<DeltaQPrior, 8>(new DeltaQPrior(prior));
@@ -2787,7 +2893,7 @@ void RobotCalibrator::InitMountsFromData() {
     if (cfg_.solver.mount_init == "cad") return;
     for (size_t ai = 0; ai < arms_.size(); ++ai) {
         ArmState& a = arms_[ai];
-        if (a.camera < 0) continue;
+        if (a.camera < 0 || cfg_.arms[ai].camera_mount_fixed) continue;
         std::map<std::string, std::vector<std::pair<Iso3, Iso3>>> obs;  // board -> (FK, C)
         for (const View& v : views_) {
             if (v.arm != static_cast<int>(ai) || !v.has_T_cam_board || v.dropped || v.holdout) continue;
@@ -2938,6 +3044,44 @@ int RobotCalibrator::UpdateCornerWeights() {
     return down;
 }
 
+// drive.flank_select: Wampler's bimodal backlash as a two-state errors-in-variables model. For each
+// training frame and each joint whose backlash is estimated, try both gear flanks (s = +-1) and keep the
+// one whose views reproject better. Held-out frames keep the model's rule (gravity side / logged).
+int RobotCalibrator::SelectFlanks() {
+    int changed = 0, tried = 0;
+    std::vector<double> r;
+    for (size_t ai = 0; ai < arms_.size(); ++ai) {
+        const ArmState& a = arms_[ai];
+        const int n = a.chain.dof();
+        const double* drv = DriveBlock(static_cast<int>(ai));
+        const std::vector<int>& held = arms_[cfg_.drive.shared ? 0 : ai].drv_const;
+        std::map<int, std::vector<View*>> frames;
+        for (View& v : views_) {
+            if (v.arm == static_cast<int>(ai) && !v.holdout && !v.dropped && static_cast<int>(v.ds.size()) == n) frames[v.frame_idx].push_back(&v);
+        }
+        for (int j = 0; j < n; ++j) {
+            if (std::find(held.begin(), held.end(), n + j) != held.end() || std::fabs(drv[n + j]) < 1e-6) continue;
+            for (auto& kv : frames) {
+                double cost[2] = {0, 0};
+                const double s0 = kv.second.front()->ds[j];
+                for (int k = 0; k < 2; ++k) {
+                    for (View* v : kv.second) v->ds[j] = k == 0 ? 1.0 : -1.0;
+                    for (View* v : kv.second) {
+                        if (!ViewResiduals(*v, r)) continue;
+                        for (double x : r) cost[k] += x * x;
+                    }
+                }
+                const double s = cost[0] <= cost[1] ? 1.0 : -1.0;
+                for (View* v : kv.second) v->ds[j] = s;
+                ++tried;
+                changed += (s != (s0 >= 0 ? 1.0 : -1.0));
+            }
+        }
+    }
+    std::cout << "[robocal] gear flank per frame: " << changed << " of " << tried << " (frame, joint) flanks changed" << std::endl;
+    return changed;
+}
+
 int RobotCalibrator::RejectOutliers() {
     std::vector<double> norms;
     std::vector<double> r;
@@ -2960,11 +3104,13 @@ int RobotCalibrator::RejectOutliers() {
         std::vector<Vec3> obj;
         std::vector<Vec2> img;
         std::vector<int> pids;
+        std::vector<double> dw;
         const size_t first_guided = v.obj.size() - std::min(v.obj.size(), static_cast<size_t>(std::max(0, v.n_guided)));
         int guided_kept = 0;
         for (size_t i = 0; i < v.obj.size(); ++i) {
             if (std::hypot(r[2 * i], r[2 * i + 1]) <= thr) {
                 if (i >= first_guided) ++guided_kept;
+                if (i < v.dw.size()) dw.push_back(v.dw[i]);
                 obj.push_back(v.obj[i]);
                 img.push_back(v.img[i]);
                 if (i < v.pids.size()) pids.push_back(v.pids[i]);
@@ -2976,6 +3122,7 @@ int RobotCalibrator::RejectOutliers() {
         v.img.swap(img);
         if (!v.pids.empty()) v.pids.swap(pids);  // per-corner heights are indexed by pid
         v.n_guided = guided_kept;                // guided corners stay at the end, in order
+        if (!v.dw.empty()) v.dw.swap(dw);
         v.pw.clear();
         if (static_cast<int>(v.obj.size()) < cfg_.solver.min_points_per_view) v.dropped = true;
     }
@@ -3000,6 +3147,11 @@ void RobotCalibrator::Solve() {
         // estimate, which would otherwise absorb that mismatch.
         ComputeDriveRegressors(true);
         RunSolver(f, "pass 2b (drive regressors at the solved zeros)");
+        for (int round = 0; cfg_.drive.flank_select && round < 3; ++round) {
+            const int changed = SelectFlanks();
+            if (changed == 0) break;
+            RunSolver(f, "pass 2c (gear flank per training frame)");
+        }
     }
     diag_.outlier_points = RejectOutliers();
     // Pixel noise: weights the images against the priors stated in absolute units (encoder noise,
@@ -4017,6 +4169,13 @@ void RobotCalibrator::WriteYaml(const std::string& path) const {
             out << YAML::Key << "holdout" << YAML::Value;
             EmitStats(out, diag_.holdout.at(cam));
             out << YAML::EndMap;
+        }
+        if (cfg_.arms[ai].geometry) {  // per joint: tilt about perp1 / perp2 (deg), shift along perp1 / perp2 (mm)
+            out << YAML::Key << "geometry_terms" << YAML::Value << YAML::BeginSeq;
+            for (int j = 0; j < a.chain.dof(); ++j) {
+                out << YAML::Flow << std::vector<double>{a.geo[4 * j] / kDeg, a.geo[4 * j + 1] / kDeg, a.geo[4 * j + 2] * 1e3, a.geo[4 * j + 3] * 1e3};
+            }
+            out << YAML::EndSeq;
         }
         // Errors-in-variables (joint_noise_deg): the fitted per-frame joint corrections, for
         // diagnostics (plot them against angle, load, approach direction).

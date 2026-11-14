@@ -5,6 +5,8 @@
 
 #include "se3.hpp"
 
+#include <ceres/rotation.h>
+
 #include <string>
 #include <vector>
 
@@ -17,6 +19,7 @@ struct ChainJoint {
     Mat3 R_origin = Mat3::Identity();
     Vec3 t_origin = Vec3::Zero();
     Vec3 axis = Vec3::UnitX();
+    Vec3 perp1 = Vec3::UnitY(), perp2 = Vec3::UnitZ();  // unit vectors perpendicular to the axis (geometry terms)
     int active = -1;  // index into the chain's joint vector; -1 = held at 0 / fixed
     // Inertial of the child link plus every off-chain link hanging from it (gripper, fingers,
     // camera ...; their joints at 0): mass (kg) and centre of mass in the child frame.
@@ -41,14 +44,26 @@ public:
     const std::string& tip_link() const { return tip_link_; }
 
     // theta: dof() joint angles (encoder value + zero offset). Pose of tip in base.
+    // geo (optional, 4 per active joint, minimal geometric calibration after Lu 2025 / Tobuschat 2026):
+    // [tilt about perp1, tilt about perp2 (rad), shift along perp1, shift along perp2 (m)], applied in the
+    // joint frame before the joint motion. The shift along / tilt about the axis itself are omitted
+    // (they duplicate the next joint's terms or the zero offset).
     template <typename T>
-    void Forward(const T* theta, Eigen::Matrix<T, 3, 3>& R, Eigen::Matrix<T, 3, 1>& t) const {
+    void Forward(const T* theta, Eigen::Matrix<T, 3, 3>& R, Eigen::Matrix<T, 3, 1>& t, const T* geo = nullptr) const {
         R.setIdentity();
         t.setZero();
         for (const ChainJoint& j : joints_) {
             t = t + R * j.t_origin.cast<T>();
             R = R * j.R_origin.cast<T>();
             if (j.active < 0) continue;
+            if (geo != nullptr && j.type != ChainJoint::Type::Prismatic) {
+                const T* g = geo + 4 * j.active;
+                t = t + R * (j.perp1.cast<T>() * g[2] + j.perp2.cast<T>() * g[3]);
+                const Eigen::Matrix<T, 3, 1> w = j.perp1.cast<T>() * g[0] + j.perp2.cast<T>() * g[1];
+                Eigen::Matrix<T, 3, 3> dR;
+                ceres::AngleAxisToRotationMatrix(w.data(), dR.data());  // column major, safe at zero
+                R = R * dR;
+            }
             if (j.type == ChainJoint::Type::Prismatic) {
                 t = t + R * (j.axis.cast<T>() * theta[j.active]);
             } else {

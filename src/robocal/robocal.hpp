@@ -38,6 +38,10 @@ struct ArmConfig {
     std::string urdf_xml;  // inline URDF (tests)
     std::string base_link;
     std::string tip_link;  // link the wrist camera is mounted on
+    std::vector<double> drive_fixed;  // drive.shared false: [c_1..c_n, h_1..h_n] held (transferred from another session)
+    bool camera_mount_fixed = false;
+    bool geometry = false;            // calibrate 4 geometric terms per joint (tilts / shifts perpendicular to the axis)
+    double geometry_sigma_mm = 1.0, geometry_sigma_deg = 0.3;  // priors (manufacturing tolerance)  // hold the wrist camera mount at T_tip_cam_init (e.g. transferred from another session)
     std::string ee_link;   // optional: fixed child of tip_link, for the T_EC export
     std::vector<std::string> joints;
     Iso3 T_world_base = Iso3::Identity();
@@ -51,6 +55,7 @@ struct ArmConfig {
     // errors with this prior (errors-in-variables), so noisy encoders are weighted correctly
     // and the reported uncertainties stay honest.
     double joint_noise_rad = 0.0;               // largest per-joint sigma (> 0: EIV on)
+    std::string joint_noise_loss = "gaussian";  // gaussian | cauchy (robust per joint: two-sided gear-play jumps)
     std::vector<double> joint_noise_joint_rad;  // per joint (joint_noise_deg: scalar or list)
     std::string camera;                // wrist camera name ("" = none)
     std::string samples;               // toolkit *_handeye_samples.jsonl
@@ -90,6 +95,8 @@ struct LevelPrior {
 
 struct SolverOptions {
     double huber_px = 1.0;       // <= 0: plain least squares
+    double distance_sigma_mm = 0.0;  // > 0: per-corner weight 1/sqrt(s_px^2 + (s_mm f / depth)^2) (Tenhumberg 2022)
+    double distance_sigma_px = 0.3;  // the pixel part s_px of that weight
     int holdout_every = 5;       // every n-th view per camera is held out (< 2: none)
     int max_iterations = 200;
     double outlier_floor_px = 3.0;
@@ -157,6 +164,8 @@ struct DriveConfig {
     double h_prior_deg = 0.1, h_sigma_deg = 0.15;
     std::vector<double> c_sigma = {1.5e-3, 1.5e-3, 1.5e-3, 2e-3, 2e-3, 2e-3};  // rad / N m
     Vec3 gravity = Vec3(0, 0, -9.81);  // world frame
+    std::vector<bool> backlash_joints, compliance_joints;  // optional masks: false = term off (held at 0)
+    bool flank_select = false;  // training frames: pick each joint's gear flank (+-1) that fits the images best (two-state EIV)
 };
 
 // Pass / fail gates on calibrated intrinsics (hand-held / free-view sessions). <= 0: not checked.
@@ -333,6 +342,7 @@ private:
         Iso3 T_tip_ee = Iso3::Identity();
         std::vector<double> dq;
         std::vector<double> drv;     // drive model: c (dof), h (dof)
+        std::vector<double> geo;     // geometry terms (4 per joint), ArmConfig::geometry
         std::vector<double> tau_ref, s_ref;
         std::vector<int> drv_const;  // entries held (no spread in their regressor)
         PoseParam tip_cam;
@@ -388,7 +398,8 @@ private:
     void IntrinsicsPrepass(int cam);
     void DumpCorners(int cam, int round) const;  // detection.dump_rounds
     int BlockOf(const View& v) const;           // time block of the view's source frame
-    int UpdateCornerWeights();                  // solver.robust: corner (IRLS Huber weights); # down-weighted
+    int UpdateCornerWeights();
+    int SelectFlanks();  // drive.flank_select                  // solver.robust: corner (IRLS Huber weights); # down-weighted
     int GuidedPass(int cam, bool rectified);  // corners found through the fitted lens; returns # added
     std::map<int, std::vector<std::pair<int, std::string>>> frame_images_;  // camera -> (frame, image)
     void LoadObservations(int cam, const std::string& path);

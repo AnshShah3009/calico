@@ -156,6 +156,12 @@ UrdfChain UrdfChain::FromString(const std::string& urdf_xml, const std::string& 
         out.joints_[i].mass = mc.first;
         out.joints_[i].com = mc.second;
     }
+    for (ChainJoint& j : out.joints_) {
+        const Vec3 a = j.axis.normalized();
+        const Vec3 ref = std::fabs(a.x()) < 0.9 ? Vec3::UnitX() : Vec3::UnitY();
+        j.perp1 = a.cross(ref).normalized();
+        j.perp2 = a.cross(j.perp1).normalized();
+    }
     out.base_link_ = base_link;
     out.tip_link_ = tip_link;
     out.dof_ = static_cast<int>(joint_names.size());

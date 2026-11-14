@@ -36,6 +36,7 @@ struct View {
     double sigma_scale = 1.0;  // view noise / pixel noise (solver.view_weights), >= 1
     int src_frame = -1;        // index of the source frame (frames list order): time blocks
     std::vector<double> pw;    // per-corner robust weight, sqrt applied (solver.robust: corner); empty = 1
+    std::vector<double> dw;    // per-corner distance weight (solver.distance_sigma_mm), relative to the pixel noise; empty = 1
     std::string image;  // source frame (manifest input)
 };
 
@@ -65,6 +66,7 @@ struct ViewCost {
     bool cam_eiv = false;                    // per-frame encoder error block follows dq_c
     bool board_eiv = false;                  // per-frame encoder error block follows dq_b
     bool cam_drive = false;                  // drive block (c, h) follows [eps_c]
+    bool cam_geo = false;                    // geometry block (4 per joint) follows [drive]
     bool board_warp = false;                 // in-plane warp block (8) follows the shape block
     bool board_heights = false;              // per-point board heights follow the shape [/ warp] block
     bool cam_pose7 = false;                  // static / hand-held camera pose is one block (q[4], t[3])
@@ -82,6 +84,7 @@ struct ViewCost {
             const T* dq = p[k++];
             const T* eps = cam_eiv ? p[k++] : nullptr;
             const T* drv = cam_drive ? p[k++] : nullptr;
+            const T* geo = cam_geo ? p[k++] : nullptr;
             const T* tq = p[k++];
             const T* tt = p[k++];
             const T* bq = p[k++];
@@ -94,7 +97,7 @@ struct ViewCost {
             }
             M3T<T> Rbt;
             V3T<T> tbt;
-            cam_chain->Forward(th.data(), Rbt, tbt);
+            cam_chain->Forward(th.data(), Rbt, tbt, geo);
             const M3T<T> Rwb = Eigen::Map<const Eigen::Quaternion<T>>(bq).normalized().toRotationMatrix();
             const M3T<T> Rtc = Eigen::Map<const Eigen::Quaternion<T>>(tq).normalized().toRotationMatrix();
             Rwc = Rwb * Rbt * Rtc;
@@ -154,7 +157,8 @@ struct ViewCost {
             const V3T<T> Xc = Rco * X + tco;
             T uv[2];
             if (!ProjectPoint(model, intr, Xc, uv)) return false;
-            const double wi = corner_weights && i < view->pw.size() ? weight * view->pw[i] : weight;
+            double wi = corner_weights && i < view->pw.size() ? weight * view->pw[i] : weight;
+            if (corner_weights && i < view->dw.size()) wi *= view->dw[i];
             r[2 * i] = (uv[0] - T(view->img[i].x())) * T(wi);
             r[2 * i + 1] = (uv[1] - T(view->img[i].y())) * T(wi);
         }

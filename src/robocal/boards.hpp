@@ -74,6 +74,8 @@ struct BoardSpec {
     // Known print scale (relative, e.g. from a ruler check): the scale's start value, held fixed
     // unless fit_scale (then the centre of its prior).
     double print_scale[2] = {0, 0};
+    bool has_shape_fixed = false;     // shape_fixed_mm: bow x / bow y / twist held (e.g. from an image-only fit)
+    double shape_fixed_m[3] = {0, 0, 0};
     // Per-printed-point height above / below the board plane (m), each with a prior: paper sheets
     // are not flat at the 0.1-0.5 mm level and their bumps are too local for bow / twist.
     bool fit_points = false;
