@@ -155,22 +155,22 @@ gravity torque on joint j. An offsets-only FK should keep the rigid offsets.
 
 ## Visualisations
 
-- [system_calibration_piper.mp4](media/system_calibration_piper.mp4): the calibrated cell per capture
-  (PiPER meshes, boards, camera rays), with each camera's reprojection error and how far the
-  back-projected corners land from their boards.
+**The calibrated cell, capture by capture**: PiPER meshes, boards, camera rays, each camera's
+reprojection error, and how far the back-projected corners land from their boards (green < 1 mm,
+yellow 1-3 mm, red > 3 mm). Full video: [system_calibration_piper.mp4](media/system_calibration_piper.mp4).
 
-  ![Cell render](media/still_piper.jpg)
+![Calibrated cell](media/gif_cell.gif)
 
-- [system_calibration_fast.mp4](media/system_calibration_fast.mp4): the same per capture as a 3D plot
-  next to the three camera images; back-projected corners coloured green < 1 mm, yellow < 3 mm,
-  red > 3 mm from their boards.
+**The calibrated robot model drawn through the real centre-camera lens** (green outlines) over the
+captures (brightened for display). Full video with all three cameras:
+[toolkit_overlay.mp4](media/toolkit_overlay.mp4).
 
-- [toolkit_overlay.mp4](media/toolkit_overlay.mp4): the calibrated robot model rendered through the
-  real lenses over the real images, all three cameras, every capture.
+![Centre-camera overlay](media/gif_overlay.gif)
 
-  ![Centre-camera overlay](media/still_overlay.jpg)
+The same per-capture view as a 3D plot next to the three camera images:
+[system_calibration_fast.mp4](media/system_calibration_fast.mp4).
 
-The videos show the offsets-only calibration with the corrected (plain) error figures.
+The animations and videos show the offsets-only calibration with the corrected (plain) error figures.
 
 ## Next capture: what to change
 
